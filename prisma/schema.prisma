@@ -1,0 +1,131 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Get a free hosted Postgres database in seconds: `npx create-db`
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum OrderKind {
+  LIVE
+  VALIDATION
+}
+
+enum ValidationStatus {
+  RUNNING
+  PASSED
+  FAILED
+}
+
+enum LedgerKind {
+  LIVE
+  VALIDATION
+}
+
+model User {
+  id           String    @id @default(cuid())
+  email        String    @unique
+  passwordHash String
+  name         String
+  createdAt    DateTime  @default(now())
+  affiliate    Affiliate?
+}
+
+model Affiliate {
+  id                  String                  @id @default(cuid())
+  userId              String                  @unique
+  user                User                    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  slug                String                  @unique
+  commissionRate      Float                   @default(0.10)
+  atelierPrompt       String?
+  draftGeneratedAt    DateTime?
+  publishedAt         DateTime?
+  lastValidationRunId String?
+  createdAt           DateTime                @default(now())
+  orders              Order[]
+  validationRuns      ValidationRun[]
+  ledgerEntries       CommissionLedgerEntry[]
+
+  @@index([slug])
+}
+
+model Product {
+  id             String      @id @default(cuid())
+  slug           String      @unique
+  name           String
+  description    String
+  priceInCents   Int
+  scentFamily    String
+  commissionRate Float       @default(0.10)
+  imageUrl       String?
+  gradient       String?
+  createdAt      DateTime    @default(now())
+  orderItems     OrderItem[]
+
+  @@index([slug])
+}
+
+model Order {
+  id                 String                  @id @default(cuid())
+  kind               OrderKind
+  email              String
+  address            String
+  totalAmountInCents Int
+  commissionInCents  Int
+  affiliateId        String?
+  affiliate          Affiliate?              @relation(fields: [affiliateId], references: [id], onDelete: SetNull)
+  validationRunId    String?
+  validationRun      ValidationRun?          @relation(fields: [validationRunId], references: [id], onDelete: SetNull)
+  createdAt          DateTime                @default(now())
+  items              OrderItem[]
+  ledgerEntries      CommissionLedgerEntry[]
+
+  @@index([affiliateId, kind, createdAt])
+  @@index([validationRunId])
+}
+
+model OrderItem {
+  id           String  @id @default(cuid())
+  orderId      String
+  order        Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  productId    String
+  product      Product @relation(fields: [productId], references: [id], onDelete: Restrict)
+  quantity     Int
+  priceInCents Int
+}
+
+model ValidationRun {
+  id            String           @id @default(cuid())
+  affiliateId   String
+  affiliate     Affiliate        @relation(fields: [affiliateId], references: [id], onDelete: Cascade)
+  status        ValidationStatus @default(RUNNING)
+  prompt        String?
+  logs          String?
+  failureReason String?
+  createdAt     DateTime         @default(now())
+  completedAt   DateTime?
+  orders        Order[]
+
+  @@index([affiliateId, createdAt])
+}
+
+model CommissionLedgerEntry {
+  id              String     @id @default(cuid())
+  affiliateId     String
+  affiliate       Affiliate  @relation(fields: [affiliateId], references: [id], onDelete: Cascade)
+  orderId         String
+  order           Order      @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  amountInCents   Int
+  kind            LedgerKind
+  validationRunId String?
+  createdAt       DateTime   @default(now())
+
+  @@index([affiliateId, kind, createdAt])
+  @@index([validationRunId])
+}
