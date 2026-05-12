@@ -776,13 +776,12 @@ textarea:focus-visible {
 }
 
 .dashboard-header h1 {
-  max-width: 14ch;
+  max-width: 18ch;
   margin: 6px 0 0;
-  font-family: "Iowan Old Style", "Palatino Linotype", Georgia, serif;
-  font-size: 4.6rem;
-  font-weight: 600;
+  font-size: 3rem;
+  font-weight: 780;
   letter-spacing: 0;
-  line-height: 0.94;
+  line-height: 1.02;
 }
 
 .dashboard-header p {
@@ -827,11 +826,17 @@ textarea:focus-visible {
 .dashboard-panel h2,
 .atelier-panel h2 {
   margin: 4px 0 0;
-  font-family: "Iowan Old Style", "Palatino Linotype", Georgia, serif;
-  font-size: 1.9rem;
-  font-weight: 500;
+  font-size: 1.34rem;
+  font-weight: 760;
   letter-spacing: 0;
-  line-height: 1.08;
+  line-height: 1.16;
+}
+
+.affiliate-link-panel h2,
+.preview-panel h2 {
+  font-family: "SFMono-Regular", Consolas, monospace;
+  font-size: 1.18rem;
+  font-weight: 650;
 }
 
 .affiliate-link-panel p,
@@ -883,8 +888,12 @@ textarea:focus-visible {
   display: grid;
   grid-template-columns: minmax(180px, 0.38fr) 1fr;
   gap: var(--space-xl);
-  background: color-mix(in oklch, var(--forest) 12%, var(--ivory));
+  border-right: 0;
+  border-left: 0;
+  border-radius: 0;
+  background: transparent;
   color: color-mix(in oklch, var(--forest) 74%, var(--ink));
+  padding: 16px 0;
 }
 
 .dashboard-proof-strip span {
@@ -965,19 +974,19 @@ textarea:focus-visible {
   display: grid;
   grid-template-columns: 44px 1fr;
   align-items: start;
-  gap: var(--space-md);
+  gap: var(--space-sm);
 }
 
 .atelier-step > span {
   display: inline-grid;
-  width: 34px;
-  height: 34px;
+  width: 30px;
+  height: 30px;
   place-items: center;
   border-radius: 999px;
   background: var(--ink);
   color: var(--ivory);
   font-family: "SFMono-Regular", Consolas, monospace;
-  font-size: 0.78rem;
+  font-size: 0.72rem;
 }
 
 .preview-panel iframe {
@@ -1269,7 +1278,7 @@ textarea:focus-visible {
 
   .dashboard-header h1,
   .auth-card h1 {
-    font-size: 3.2rem;
+    font-size: 2.55rem;
     max-width: 100%;
   }
 
