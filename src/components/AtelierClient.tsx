@@ -311,7 +311,6 @@ export function AtelierClient({ slug, initialPrompt, initialFiles, validationRun
                 <div className="generation-recency-line">
                   <span>Last update:</span>
                   <strong>{formatRelativeDuration(secondsSinceLastProgress)}</strong>
-                  <span className="generation-recency-suffix">ago</span>
                 </div>
                 {progressIsQuiet ? (
                   <p className="generation-recency-note">Codex may be browsing, thinking, or verifying without new output.</p>
@@ -401,13 +400,13 @@ function formatRelativeDuration(totalSeconds: number) {
   }
 
   if (totalSeconds < 60) {
-    return `${totalSeconds}s`;
+    return `${totalSeconds}s ago`;
   }
 
   const minutes = Math.floor(totalSeconds / 60);
   const seconds = totalSeconds % 60;
 
-  return seconds ? `${minutes}m ${seconds}s` : `${minutes}m`;
+  return seconds ? `${minutes}m ${seconds}s ago` : `${minutes}m ago`;
 }
 
 function formatEventTime(value: string) {

@@ -1169,12 +1169,6 @@ textarea:focus-visible {
   color: var(--ink);
 }
 
-.generation-recency-suffix {
-  color: color-mix(in oklch, var(--ink) 58%, transparent);
-  font-weight: 600;
-  text-transform: none;
-}
-
 .generation-recency-note {
   max-width: 68ch;
   margin: 0;
