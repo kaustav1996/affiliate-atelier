@@ -1,11 +1,17 @@
 import { NextResponse } from "next/server";
 import { getActiveGenerationJob, startGenerationJob } from "@/lib/atelier-generation-jobs";
-import { requireAffiliate } from "@/lib/auth/current";
+import { getCurrentUser } from "@/lib/auth/current";
 import { prisma } from "@/lib/prisma";
 
 export async function POST(request: Request) {
   try {
-    const { affiliate } = await requireAffiliate();
+    const user = await getCurrentUser();
+    const affiliate = user?.affiliate;
+
+    if (!affiliate) {
+      return NextResponse.json({ error: "Log in as an affiliate to generate a storefront." }, { status: 401 });
+    }
+
     const body = (await request.json()) as { prompt?: string };
     const prompt = body.prompt?.trim();
 

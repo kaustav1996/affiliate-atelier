@@ -32,6 +32,14 @@ type GenerationJobView = {
   error?: string;
 };
 
+type JsonPayload = {
+  job?: GenerationJobView;
+  run?: ValidationRunView;
+  logs?: string;
+  files?: string[];
+  error?: string;
+};
+
 const examples = [
   "Dark luxury Parisian boutique with black, gold, serif type, poetic copy.",
   "Cyberpunk Tokyo fragrance bar with neon cards and fast checkout.",
@@ -99,7 +107,7 @@ export function AtelierClient({ slug, initialPrompt, initialFiles, validationRun
     async function pollGenerationJob() {
       try {
         const response = await fetch(`/api/atelier/generate/${jobId}`, { cache: "no-store" });
-        const payload = (await response.json()) as { job?: GenerationJobView; error?: string };
+        const payload = await readJsonPayload(response);
 
         if (cancelled) {
           return;
@@ -130,7 +138,12 @@ export function AtelierClient({ slug, initialPrompt, initialFiles, validationRun
         }
       } catch (error) {
         if (!cancelled) {
-          setMessage(error instanceof Error ? error.message : "Generation status check failed.");
+          const message = error instanceof Error ? error.message : "Generation status check failed.";
+          setGenerationJob((current) =>
+            current && current.id === jobId ? { ...current, status: "FAILED", message, error: message } : current,
+          );
+          setLogs(message);
+          setMessage(message);
         }
       }
     }
@@ -154,7 +167,7 @@ export function AtelierClient({ slug, initialPrompt, initialFiles, validationRun
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ prompt }),
         });
-        const payload = (await response.json()) as { job?: GenerationJobView; error?: string };
+        const payload = await readJsonPayload(response);
 
         if (!response.ok || !payload.job) {
           setMessage(payload.error || "Generation failed to start.");
@@ -175,12 +188,7 @@ export function AtelierClient({ slug, initialPrompt, initialFiles, validationRun
     setMessage("Running validation tests...");
     startTransition(async () => {
       const response = await fetch("/api/atelier/run-tests", { method: "POST" });
-      const payload = (await response.json()) as {
-        run?: ValidationRunView;
-        logs?: string;
-        files?: string[];
-        error?: string;
-      };
+      const payload = await readJsonPayload(response);
 
       if (payload.run) {
         const nextRun: ValidationRunView = {
@@ -210,7 +218,7 @@ export function AtelierClient({ slug, initialPrompt, initialFiles, validationRun
     setMessage("Publishing generated storefront...");
     startTransition(async () => {
       const response = await fetch("/api/atelier/publish", { method: "POST" });
-      const payload = (await response.json()) as { error?: string };
+      const payload = await readJsonPayload(response);
       setMessage(response.ok ? "Published. /a/" + slug + " now uses the generated storefront." : payload.error || "Publish failed.");
     });
   }
@@ -219,7 +227,7 @@ export function AtelierClient({ slug, initialPrompt, initialFiles, validationRun
     setMessage("Publishing the default storefront...");
     startTransition(async () => {
       const response = await fetch("/api/atelier/reset", { method: "POST" });
-      const payload = (await response.json()) as { files?: string[]; error?: string };
+      const payload = await readJsonPayload(response);
 
       if (!response.ok) {
         setMessage(payload.error || "Reset failed.");
@@ -363,4 +371,20 @@ function generationButtonLabel({
   }
 
   return hasDraft ? "Apply changes with Codex" : "Generate with Codex";
+}
+
+async function readJsonPayload(response: Response): Promise<JsonPayload> {
+  const contentType = response.headers.get("content-type") || "";
+
+  if (contentType.includes("application/json")) {
+    return (await response.json()) as JsonPayload;
+  }
+
+  const body = await response.text();
+  const isHtml = body.trimStart().startsWith("<!DOCTYPE") || body.trimStart().startsWith("<html");
+  const detail = isHtml
+    ? "The server returned an HTML page instead of JSON. You may need to log in again or restart the dev server."
+    : body.slice(0, 180) || response.statusText;
+
+  throw new Error(`Request failed (${response.status}): ${detail}`);
 }

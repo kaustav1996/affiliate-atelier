@@ -103,6 +103,7 @@ export function CommerceExperience({
       }
 
       setOrder(payload.order);
+      setCartItems([]);
       setCartOpen(false);
       setCheckoutOpen(false);
     });
@@ -258,10 +259,19 @@ export function CommerceExperience({
 
       {checkoutOpen ? (
         <section className="checkout-stage" aria-label="Checkout">
-          <div>
-            <p className="eyebrow">Secure test checkout</p>
-            <h2>{tone.checkoutLanguage}</h2>
-            <p>Fake card: 4242 4242 4242 4242 · 12/30 · 123</p>
+          <div className="drawer-header">
+            <div>
+              <p className="eyebrow">Secure test checkout</p>
+              <h2>{tone.checkoutLanguage}</h2>
+            </div>
+            <button className="text-button" onClick={() => setCheckoutOpen(false)}>
+              Close
+            </button>
+          </div>
+          <div className="demo-card-details" aria-label="Demo credit card details">
+            <span>Demo card</span>
+            <strong>4242 4242 4242 4242</strong>
+            <span>Expiry 12/30 · CVC 123 · ZIP 400001</span>
           </div>
           <label>
             Email

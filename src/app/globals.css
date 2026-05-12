@@ -607,6 +607,26 @@ textarea:focus-visible {
   color: var(--danger);
 }
 
+.demo-card-details {
+  display: grid;
+  gap: var(--space-xs);
+  border: 1px solid color-mix(in oklch, var(--tone-accent) 42%, transparent);
+  border-radius: 8px;
+  background: color-mix(in oklch, var(--tone-panel) 62%, transparent);
+  padding: var(--space-md);
+}
+
+.demo-card-details span {
+  color: color-mix(in oklch, var(--tone-ink) 68%, transparent);
+  font-size: 0.9rem;
+}
+
+.demo-card-details strong {
+  font-family: "SFMono-Regular", Consolas, monospace;
+  font-size: 1rem;
+  letter-spacing: 0;
+}
+
 .form-error {
   margin: 0;
   color: var(--danger);
