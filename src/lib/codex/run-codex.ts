@@ -11,6 +11,9 @@ export type RepairAffiliateStorefrontInput = GenerateAffiliateStorefrontInput & 
   validationLogs: string;
 };
 
+export const CODEX_GENERATION_TIMEOUT_MS = 1000 * 60 * 15;
+export const CODEX_GENERATION_TIMEOUT_SECONDS = CODEX_GENERATION_TIMEOUT_MS / 1000;
+
 export function buildCodexPrompt({ slug, prompt }: GenerateAffiliateStorefrontInput) {
   return `You are Codex running inside ScentForge Atelier.
 
@@ -94,13 +97,17 @@ export async function generateAffiliateStorefront(input: GenerateAffiliateStoref
         cwd: process.cwd(),
         env: process.env,
         input: codexPrompt,
-        timeout: 1000 * 60 * 8,
+        timeout: CODEX_GENERATION_TIMEOUT_MS,
         reject: false,
       },
     );
 
     const files = await listGeneratedFiles(input.slug, "draft");
     const logs = [result.stdout, result.stderr].filter(Boolean).join("\n\n");
+
+    if (result.timedOut) {
+      throw new Error("Codex generation exceeded the 15-minute limit. Try a narrower prompt or run generation again.");
+    }
 
     if (result.exitCode !== 0) {
       throw new Error(logs || `Codex exited with code ${result.exitCode}.`);
@@ -169,12 +176,16 @@ export async function repairAffiliateStorefront(input: RepairAffiliateStorefront
         cwd: process.cwd(),
         env: process.env,
         input: codexPrompt,
-        timeout: 1000 * 60 * 8,
+        timeout: CODEX_GENERATION_TIMEOUT_MS,
         reject: false,
       },
     );
     const files = await listGeneratedFiles(input.slug, "draft");
     const logs = [result.stdout, result.stderr].filter(Boolean).join("\n\n");
+
+    if (result.timedOut) {
+      throw new Error("Codex repair exceeded the 15-minute limit. Review the validation logs and try a narrower repair prompt.");
+    }
 
     if (result.exitCode !== 0) {
       throw new Error(logs || `Codex repair exited with code ${result.exitCode}.`);

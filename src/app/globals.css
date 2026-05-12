@@ -858,6 +858,55 @@ textarea:focus-visible {
   padding: var(--space-md);
 }
 
+.generation-job {
+  display: grid;
+  gap: var(--space-sm);
+  border: 1px solid color-mix(in oklch, var(--amber) 34%, transparent);
+  border-radius: 8px;
+  background: color-mix(in oklch, var(--smoke) 42%, var(--ivory));
+  padding: var(--space-md);
+}
+
+.generation-job.running {
+  border-color: color-mix(in oklch, var(--forest) 34%, var(--amber));
+}
+
+.generation-job.completed {
+  border-color: color-mix(in oklch, var(--moss) 54%, var(--forest));
+}
+
+.generation-job.failed {
+  border-color: color-mix(in oklch, var(--danger) 46%, var(--ink));
+}
+
+.generation-job-copy {
+  display: grid;
+  gap: var(--space-xs);
+}
+
+.generation-job-copy span,
+.generation-job p {
+  margin: 0;
+  color: color-mix(in oklch, var(--ink) 68%, transparent);
+  font-size: 0.9rem;
+  line-height: 1.55;
+}
+
+.generation-progress {
+  overflow: hidden;
+  height: 10px;
+  border-radius: 999px;
+  background: color-mix(in oklch, var(--ink) 10%, transparent);
+}
+
+.generation-progress span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--forest), var(--amber));
+  transition: width 260ms var(--ease-premium);
+}
+
 .validation-state.passed {
   background: color-mix(in oklch, var(--forest) 18%, var(--ivory));
 }

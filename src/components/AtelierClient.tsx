@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useState, useTransition } from "react";
 
 type ValidationRunView = {
   id: string;
@@ -18,6 +18,20 @@ type AtelierClientProps = {
   validationRuns: ValidationRunView[];
 };
 
+type GenerationJobView = {
+  id: string;
+  status: "RUNNING" | "COMPLETED" | "FAILED";
+  message: string;
+  startedAt: string;
+  completedAt: string | null;
+  elapsedSeconds: number;
+  timeoutSeconds: number;
+  expectedDuration: string;
+  files?: string[];
+  logs?: string;
+  error?: string;
+};
+
 const examples = [
   "Dark luxury Parisian boutique with black, gold, serif type, poetic copy.",
   "Cyberpunk Tokyo fragrance bar with neon cards and fast checkout.",
@@ -31,11 +45,22 @@ export function AtelierClient({ slug, initialPrompt, initialFiles, validationRun
   const [runs, setRuns] = useState(validationRuns);
   const [message, setMessage] = useState("");
   const [previewKey, setPreviewKey] = useState(0);
+  const [generationJob, setGenerationJob] = useState<GenerationJobView | null>(null);
+  const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [isPending, startTransition] = useTransition();
 
   const latestRun = runs[0];
   const passed = latestRun?.status === "PASSED";
   const hasDraft = files.length > 0;
+  const isGenerating = generationJob?.status === "RUNNING";
+  const generationJobId = generationJob?.id;
+  const generationJobStatus = generationJob?.status;
+  const generationStartedAt = generationJob?.startedAt;
+  const isBusy = isPending || isGenerating;
+  const visibleElapsedSeconds = isGenerating ? elapsedSeconds : generationJob?.elapsedSeconds || 0;
+  const progressPercent = generationJob
+    ? Math.min(100, Math.max(7, Math.round((visibleElapsedSeconds / generationJob.timeoutSeconds) * 100)))
+    : 0;
 
   const checklist = useMemo(
     () => [
@@ -51,30 +76,98 @@ export function AtelierClient({ slug, initialPrompt, initialFiles, validationRun
     [latestRun?.status, passed],
   );
 
-  function generate() {
-    setMessage(hasDraft ? "Applying changes with Codex CLI..." : "Generating with Codex CLI...");
-    startTransition(async () => {
-      const response = await fetch("/api/atelier/generate", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prompt }),
-      });
-      const payload = (await response.json()) as { files?: string[]; logs?: string; error?: string };
+  useEffect(() => {
+    if (!isGenerating || !generationStartedAt) {
+      return;
+    }
 
-      if (!response.ok) {
-        setMessage(payload.error || "Generation failed.");
-        return;
+    const timer = window.setInterval(() => {
+      setElapsedSeconds(Math.floor((Date.now() - new Date(generationStartedAt).getTime()) / 1000));
+    }, 1000);
+
+    return () => window.clearInterval(timer);
+  }, [generationStartedAt, isGenerating]);
+
+  useEffect(() => {
+    if (!generationJobId || generationJobStatus !== "RUNNING") {
+      return;
+    }
+
+    let cancelled = false;
+    const jobId = generationJobId;
+
+    async function pollGenerationJob() {
+      try {
+        const response = await fetch(`/api/atelier/generate/${jobId}`, { cache: "no-store" });
+        const payload = (await response.json()) as { job?: GenerationJobView; error?: string };
+
+        if (cancelled) {
+          return;
+        }
+
+        if (!response.ok || !payload.job) {
+          setGenerationJob((current) =>
+            current && current.id === jobId
+              ? { ...current, status: "FAILED", message: payload.error || "Generation status was lost." }
+              : current,
+          );
+          setMessage(payload.error || "Generation status was lost. Start generation again.");
+          return;
+        }
+
+        setGenerationJob(payload.job);
+        setMessage(payload.job.message);
+
+        if (payload.job.status === "COMPLETED") {
+          setFiles(payload.job.files || []);
+          setLogs(payload.job.logs || "");
+          setRuns([]);
+          setPreviewKey((value) => value + 1);
+        }
+
+        if (payload.job.status === "FAILED") {
+          setLogs(payload.job.logs || payload.job.error || "");
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setMessage(error instanceof Error ? error.message : "Generation status check failed.");
+        }
       }
+    }
 
-      setFiles(payload.files || []);
-      setLogs(payload.logs || "");
-      setRuns([]);
-      setMessage(
-        hasDraft
-          ? "Codex updated the draft. Run validation again before publishing."
-          : "Generated files are ready. Run validation before publishing.",
-      );
-      setPreviewKey((value) => value + 1);
+    const poller = window.setInterval(pollGenerationJob, 5000);
+    void pollGenerationJob();
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(poller);
+    };
+  }, [generationJobId, generationJobStatus]);
+
+  function generate() {
+    setMessage(hasDraft ? "Starting a Codex revision job..." : "Starting a Codex generation job...");
+    setGenerationJob(null);
+    startTransition(async () => {
+      try {
+        const response = await fetch("/api/atelier/generate", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ prompt }),
+        });
+        const payload = (await response.json()) as { job?: GenerationJobView; error?: string };
+
+        if (!response.ok || !payload.job) {
+          setMessage(payload.error || "Generation failed to start.");
+          return;
+        }
+
+        setGenerationJob(payload.job);
+        setElapsedSeconds(payload.job.elapsedSeconds);
+        setLogs("Codex CLI job started. Live status will update here when generation completes.");
+        setMessage(payload.job.message);
+      } catch (error) {
+        setMessage(error instanceof Error ? error.message : "Generation failed to start.");
+      }
     });
   }
 
@@ -135,6 +228,8 @@ export function AtelierClient({ slug, initialPrompt, initialFiles, validationRun
 
       setFiles(payload.files || []);
       setRuns([]);
+      setGenerationJob(null);
+      setElapsedSeconds(0);
       setLogs("Default platform storefront is now live. Generated draft and published artifacts were removed.");
       setMessage("Default storefront is live at /a/" + slug + ".");
       setPreviewKey((value) => value + 1);
@@ -154,14 +249,38 @@ export function AtelierClient({ slug, initialPrompt, initialFiles, validationRun
             </button>
           ))}
         </div>
-        <button className="primary-action" disabled={isPending} onClick={generate}>
-          {isPending ? "Working" : hasDraft ? "Apply changes with Codex" : "Generate with Codex"}
+        <button className="primary-action" disabled={isBusy} onClick={generate}>
+          {generationButtonLabel({ hasDraft, isGenerating, isPending })}
         </button>
       </section>
 
       <section className="atelier-panel status-panel">
         <p className="eyebrow">Generation status</p>
         <h2>{message || (files.length ? "Generated files" : "Idle")}</h2>
+        {generationJob ? (
+          <div className={`generation-job ${generationJob.status.toLowerCase()}`}>
+            <div className="generation-job-copy">
+              <strong>
+                {generationJob.status === "RUNNING"
+                  ? "Codex is running outside the browser request."
+                  : generationJob.status === "COMPLETED"
+                    ? "Generation finished."
+                    : "Generation stopped."}
+              </strong>
+              <span>
+                Elapsed {formatDuration(visibleElapsedSeconds)} · {generationJob.expectedDuration} · hard limit{" "}
+                {formatDuration(generationJob.timeoutSeconds)}
+              </span>
+            </div>
+            <div className="generation-progress" aria-label="Generation time progress">
+              <span style={{ width: `${progressPercent}%` }} />
+            </div>
+            <p>
+              The browser is polling a short status endpoint, so the tab should not time out while Codex writes files.
+            </p>
+            {generationJob.error ? <p className="form-error">{generationJob.error}</p> : null}
+          </div>
+        ) : null}
         <ul className="file-list">
           {files.length ? files.map((file) => <li key={file}>{file}</li>) : <li>No draft files yet.</li>}
         </ul>
@@ -170,13 +289,13 @@ export function AtelierClient({ slug, initialPrompt, initialFiles, validationRun
           {latestRun?.failureReason ? <span>{latestRun.failureReason}</span> : null}
         </div>
         <div className="action-row">
-          <button className="secondary-action" disabled={isPending || files.length === 0} onClick={runValidation}>
+          <button className="secondary-action" disabled={isBusy || files.length === 0} onClick={runValidation}>
             Run validation tests
           </button>
-          <button className="primary-action" disabled={isPending || !passed} onClick={publish}>
+          <button className="primary-action" disabled={isBusy || !passed} onClick={publish}>
             Publish
           </button>
-          <button className="text-button" disabled={isPending} onClick={resetToDefault}>
+          <button className="text-button" disabled={isBusy} onClick={resetToDefault}>
             Reset to default storefront
           </button>
         </div>
@@ -217,4 +336,31 @@ export function AtelierClient({ slug, initialPrompt, initialFiles, validationRun
       </section>
     </div>
   );
+}
+
+function formatDuration(totalSeconds: number) {
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+
+  return `${minutes}:${String(seconds).padStart(2, "0")}`;
+}
+
+function generationButtonLabel({
+  hasDraft,
+  isGenerating,
+  isPending,
+}: {
+  hasDraft: boolean;
+  isGenerating: boolean;
+  isPending: boolean;
+}) {
+  if (isGenerating) {
+    return "Codex running";
+  }
+
+  if (isPending) {
+    return "Starting";
+  }
+
+  return hasDraft ? "Apply changes with Codex" : "Generate with Codex";
 }
