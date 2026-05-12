@@ -6,6 +6,7 @@ export type GeneratedManifest = {
   badge: string;
   checkoutLanguage: string;
   effects?: string[];
+  ambientEffects?: GeneratedAmbientEffect[];
   success?: {
     eyebrow: string;
     title: string;
@@ -20,6 +21,52 @@ export type GeneratedManifest = {
     accent: string;
     rose: string;
   };
+};
+
+export type GeneratedAmbientEffect = {
+  id: string;
+  label?: string;
+  placement?: "background" | "foreground";
+  elements: GeneratedAmbientElement[];
+  keyframes: GeneratedAmbientKeyframe[];
+};
+
+export type GeneratedAmbientElement = {
+  id: string;
+  style: GeneratedAmbientStyle;
+  animation?: GeneratedAmbientAnimation;
+};
+
+export type GeneratedAmbientAnimation = {
+  durationSeconds: number;
+  delaySeconds?: number;
+  timingFunction?: string;
+  iterationCount?: "infinite" | number;
+  direction?: "normal" | "reverse" | "alternate" | "alternate-reverse";
+};
+
+export type GeneratedAmbientKeyframe = {
+  offset: number;
+  transform?: string;
+  opacity?: number;
+  filter?: string;
+};
+
+export type GeneratedAmbientStyle = {
+  top?: string;
+  right?: string;
+  bottom?: string;
+  left?: string;
+  width?: string;
+  height?: string;
+  borderRadius?: string;
+  background?: string;
+  border?: string;
+  boxShadow?: string;
+  opacity?: number;
+  mixBlendMode?: string;
+  filter?: string;
+  transform?: string;
 };
 
 export function defaultManifest(slug?: string): GeneratedManifest {

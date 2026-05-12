@@ -11,7 +11,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ job
   }
 
   const { jobId } = await params;
-  const job = getGenerationJob(affiliate.id, jobId);
+  const job = await getGenerationJob(affiliate.id, jobId);
 
   if (!job) {
     return NextResponse.json(

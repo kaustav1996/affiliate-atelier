@@ -4,10 +4,11 @@ import {
   CODEX_GENERATION_TIMEOUT_SECONDS,
   type CodexGenerationMode,
   type CodexProgressEvent,
+  type CodexProgressPhase,
   determineGenerationMode,
   generateAffiliateStorefront,
 } from "@/lib/codex/run-codex";
-import { listGeneratedFiles } from "@/lib/generated-storefront";
+import { getGeneratedFileStatus, type GeneratedProgressFileEvent, listGeneratedFiles } from "@/lib/generated-storefront";
 import { prisma } from "@/lib/prisma";
 
 export const GENERATION_TIMEOUT_SECONDS = CODEX_GENERATION_TIMEOUT_SECONDS;
@@ -25,6 +26,11 @@ export type GenerationJobSnapshot = {
   timeoutSeconds: number;
   expectedDuration: string;
   mode: CodexGenerationMode;
+  currentPhase: CodexProgressPhase;
+  currentDetail?: string;
+  currentToolName?: string;
+  draftReady: boolean;
+  draftUpdatedAt: string | null;
   progressEvents: CodexProgressEvent[];
   files?: string[];
   logs?: string;
@@ -87,9 +93,12 @@ export async function startGenerationJob({
     expectedDuration: options.expectedDuration,
     mode,
     progressEvents: [
-      { at: now.toISOString(), message: "Preparing Codex CLI job." },
-      { at: now.toISOString(), message: modeMessage },
+      { at: now.toISOString(), message: "Preparing Codex CLI job.", phase: "setup" },
+      { at: now.toISOString(), message: modeMessage, phase: "setup" },
     ],
+    currentPhase: "setup",
+    draftReady: false,
+    draftUpdatedAt: null,
   };
 
   jobStore().set(job.id, job);
@@ -98,7 +107,7 @@ export async function startGenerationJob({
   return toSnapshot(job);
 }
 
-export function getActiveGenerationJob(affiliateId: string) {
+export async function getActiveGenerationJob(affiliateId: string) {
   const activeJob = [...jobStore().values()].find(
     (job) => job.affiliateId === affiliateId && job.status === "RUNNING",
   );
@@ -106,7 +115,7 @@ export function getActiveGenerationJob(affiliateId: string) {
   return activeJob ? toSnapshot(activeJob) : null;
 }
 
-export function getGenerationJob(affiliateId: string, jobId: string) {
+export async function getGenerationJob(affiliateId: string, jobId: string) {
   const job = jobStore().get(jobId);
 
   if (!job || job.affiliateId !== affiliateId) {
@@ -123,7 +132,7 @@ async function runGenerationJob(job: GenerationJob) {
     const result = await generateAffiliateStorefront({
       slug: job.slug,
       prompt: job.prompt,
-      onProgress: (event) => addProgress(job, event.message, event.at),
+      onProgress: (event) => addProgress(job, event),
     });
 
     await prisma.affiliate.update({
@@ -135,13 +144,13 @@ async function runGenerationJob(job: GenerationJob) {
     job.message = "Codex finished the draft. Run validation before publishing.";
     job.files = result.files;
     job.logs = result.logs;
-    addProgress(job, job.message);
+    addProgress(job, { at: new Date().toISOString(), message: job.message, phase: "summary" });
   } catch (error) {
     job.status = "FAILED";
     job.message = "Codex generation failed.";
     job.error = error instanceof Error ? error.message : String(error);
     job.logs = job.error;
-    addProgress(job, job.error || job.message);
+    addProgress(job, { at: new Date().toISOString(), message: job.error || job.message, phase: "error" });
   } finally {
     clearInterval(heartbeat);
     job.completedAt = new Date().toISOString();
@@ -149,7 +158,19 @@ async function runGenerationJob(job: GenerationJob) {
   }
 }
 
-function toSnapshot(job: GenerationJob): GenerationJobSnapshot {
+async function toSnapshot(job: GenerationJob): Promise<GenerationJobSnapshot> {
+  const draftStatus = await getGeneratedFileStatus(job.slug, "draft");
+  const progressEvents = mergeProgressEvents(job.progressEvents, draftStatus.progressEvents);
+  const latestProgress = progressEvents.at(-1);
+  const files = job.files || draftStatus.files;
+  const draftReady = draftStatus.manifestReady;
+  const draftUpdatedAt = draftStatus.updatedAt;
+
+  job.draftReady = draftReady;
+  job.draftUpdatedAt = draftUpdatedAt;
+  job.files = files;
+  job.progressEvents = progressEvents;
+
   return {
     id: job.id,
     status: job.status,
@@ -160,11 +181,64 @@ function toSnapshot(job: GenerationJob): GenerationJobSnapshot {
     timeoutSeconds: job.timeoutSeconds,
     expectedDuration: job.expectedDuration,
     mode: job.mode,
-    progressEvents: job.progressEvents,
-    files: job.files,
+    currentPhase: latestProgress?.phase || job.currentPhase,
+    currentDetail: latestProgress?.detail,
+    currentToolName: latestProgress?.toolName,
+    draftReady,
+    draftUpdatedAt,
+    progressEvents,
+    files,
     logs: job.logs,
     error: job.error,
   };
+}
+
+function mergeProgressEvents(
+  jobEvents: CodexProgressEvent[],
+  fileEvents: GeneratedProgressFileEvent[],
+): CodexProgressEvent[] {
+  const events = [
+    ...jobEvents,
+    ...fileEvents.map(normalizeFileProgressEvent),
+  ].sort((left, right) => new Date(left.at).getTime() - new Date(right.at).getTime());
+  const seen = new Set<string>();
+
+  return events.filter((event) => {
+    const key = `${event.at}:${event.phase}:${event.message}`;
+
+    if (seen.has(key)) {
+      return false;
+    }
+
+    seen.add(key);
+    return true;
+  }).slice(-12);
+}
+
+function normalizeFileProgressEvent(event: GeneratedProgressFileEvent): CodexProgressEvent {
+  return {
+    at: event.at,
+    message: event.message,
+    phase: normalizeProgressPhase(event.phase),
+    detail: event.detail,
+    toolName: event.toolName || "draft-progress-file",
+  };
+}
+
+function normalizeProgressPhase(phase: string | undefined): CodexProgressPhase {
+  const phases: CodexProgressPhase[] = [
+    "setup",
+    "planning",
+    "inspection",
+    "editing",
+    "verification",
+    "tool",
+    "summary",
+    "heartbeat",
+    "error",
+  ];
+
+  return phases.find((item) => item === phase) || "summary";
 }
 
 function elapsedSeconds(startedAt: string) {
@@ -181,13 +255,16 @@ function cleanupOldJobs() {
   }
 }
 
-function addProgress(job: GenerationJob, message: string, at = new Date().toISOString()) {
-  if (job.progressEvents.at(-1)?.message === message) {
+function addProgress(job: GenerationJob, event: CodexProgressEvent) {
+  if (job.progressEvents.at(-1)?.message === event.message) {
     return;
   }
 
-  job.message = message;
-  job.progressEvents = [...job.progressEvents, { at, message }].slice(-12);
+  job.message = event.message;
+  job.currentPhase = event.phase;
+  job.currentDetail = event.detail;
+  job.currentToolName = event.toolName;
+  job.progressEvents = [...job.progressEvents, event].slice(-12);
 }
 
 function startHeartbeat(job: GenerationJob) {
@@ -203,16 +280,21 @@ function startHeartbeat(job: GenerationJob) {
       return;
     }
 
-    addProgress(job, heartbeatMessage(job, silenceSeconds));
+    addProgress(job, heartbeatEvent(job, silenceSeconds));
   }, HEARTBEAT_INTERVAL_MS);
 }
 
-function heartbeatMessage(job: GenerationJob, silenceSeconds: number) {
-  if (job.mode === "surgical-revision") {
-    return `Still waiting on Codex CLI. No new output for ${formatShortDuration(silenceSeconds)}.`;
-  }
+function heartbeatEvent(job: GenerationJob, silenceSeconds: number): CodexProgressEvent {
+  const latest = job.progressEvents.at(-1);
+  const lastActivity = latest?.message || "Codex CLI started.";
 
-  return `Still running. Codex may be browsing, editing, or verifying. No new output for ${formatShortDuration(silenceSeconds)}.`;
+  return {
+    at: new Date().toISOString(),
+    message: `No new Codex output for ${formatShortDuration(silenceSeconds)}.`,
+    phase: "heartbeat",
+    detail: `Last activity: ${lastActivity}`,
+    toolName: latest?.toolName,
+  };
 }
 
 function formatShortDuration(totalSeconds: number) {

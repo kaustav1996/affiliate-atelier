@@ -19,7 +19,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Describe the storefront before generating." }, { status: 400 });
     }
 
-    const activeJob = getActiveGenerationJob(affiliate.id);
+    const activeJob = await getActiveGenerationJob(affiliate.id);
 
     if (activeJob) {
       return NextResponse.json({ job: activeJob }, { status: 202 });

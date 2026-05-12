@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 
 type ValidationRunView = {
   id: string;
@@ -28,10 +28,34 @@ type GenerationJobView = {
   timeoutSeconds: number;
   expectedDuration: string;
   mode: "full-generation" | "design-revision" | "surgical-revision";
-  progressEvents: { at: string; message: string }[];
+  currentPhase: ProgressPhase;
+  currentDetail?: string;
+  currentToolName?: string;
+  draftReady: boolean;
+  draftUpdatedAt: string | null;
+  progressEvents: ProgressEventView[];
   files?: string[];
   logs?: string;
   error?: string;
+};
+
+type ProgressPhase =
+  | "setup"
+  | "planning"
+  | "inspection"
+  | "editing"
+  | "verification"
+  | "tool"
+  | "summary"
+  | "heartbeat"
+  | "error";
+
+type ProgressEventView = {
+  at: string;
+  message: string;
+  phase: ProgressPhase;
+  detail?: string;
+  toolName?: string;
 };
 
 type JsonPayload = {
@@ -58,6 +82,7 @@ export function AtelierClient({ slug, initialPrompt, initialFiles, validationRun
   const [generationJob, setGenerationJob] = useState<GenerationJobView | null>(null);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [isPending, startTransition] = useTransition();
+  const refreshedDraftAt = useRef<string | null>(null);
 
   const latestRun = runs[0];
   const passed = latestRun?.status === "PASSED";
@@ -76,7 +101,9 @@ export function AtelierClient({ slug, initialPrompt, initialFiles, validationRun
   const progressIsQuiet = isGenerating && secondsSinceLastProgress >= 90;
   const generationStatusHeading = generationJob ? generationHeading(generationJob) : message || (files.length ? "Generated files" : "Idle");
   const progressPercent = generationJob
-    ? Math.min(100, Math.max(7, Math.round((visibleElapsedSeconds / generationJob.timeoutSeconds) * 100)))
+    ? generationJob.draftReady && generationJob.status === "RUNNING"
+      ? Math.min(98, Math.max(82, Math.round((visibleElapsedSeconds / generationJob.timeoutSeconds) * 100)))
+      : Math.min(100, Math.max(7, Math.round((visibleElapsedSeconds / generationJob.timeoutSeconds) * 100)))
     : 0;
 
   const checklist = useMemo(
@@ -92,6 +119,19 @@ export function AtelierClient({ slug, initialPrompt, initialFiles, validationRun
     ],
     [latestRun?.status, passed],
   );
+
+  function syncGeneratedDraft(job: GenerationJobView) {
+    if (job.files) {
+      setFiles(job.files);
+    }
+
+    if (!job.draftReady || !job.draftUpdatedAt || refreshedDraftAt.current === job.draftUpdatedAt) {
+      return;
+    }
+
+    refreshedDraftAt.current = job.draftUpdatedAt;
+    setPreviewKey((value) => value + 1);
+  }
 
   useEffect(() => {
     if (!isGenerating || !generationStartedAt) {
@@ -132,14 +172,13 @@ export function AtelierClient({ slug, initialPrompt, initialFiles, validationRun
           return;
         }
 
+        syncGeneratedDraft(payload.job);
         setGenerationJob(payload.job);
         setMessage(payload.job.message);
 
         if (payload.job.status === "COMPLETED") {
-          setFiles(payload.job.files || []);
           setLogs(payload.job.logs || "");
           setRuns([]);
-          setPreviewKey((value) => value + 1);
         }
 
         if (payload.job.status === "FAILED") {
@@ -183,6 +222,7 @@ export function AtelierClient({ slug, initialPrompt, initialFiles, validationRun
           return;
         }
 
+        syncGeneratedDraft(payload.job);
         setGenerationJob(payload.job);
         setElapsedSeconds(payload.job.elapsedSeconds);
         setLogs("Codex CLI job started. Live status will update here as progress events arrive.");
@@ -247,6 +287,7 @@ export function AtelierClient({ slug, initialPrompt, initialFiles, validationRun
       setRuns([]);
       setGenerationJob(null);
       setElapsedSeconds(0);
+      refreshedDraftAt.current = null;
       setLogs("Default platform storefront is now live. Generated draft and published artifacts were removed.");
       setMessage("Default storefront is live at /a/" + slug + ".");
       setPreviewKey((value) => value + 1);
@@ -288,23 +329,22 @@ export function AtelierClient({ slug, initialPrompt, initialFiles, validationRun
           <div className={`generation-job ${generationJob.status.toLowerCase()}`}>
             <div className="generation-job-copy">
               <strong>
-                {generationJob.status === "RUNNING"
-                  ? "Codex is running outside the browser request."
-                  : generationJob.status === "COMPLETED"
-                    ? "Generation finished."
-                    : "Generation stopped."}
+                {generationPrimaryStatus(generationJob)}
               </strong>
               <span>
                 {formatGenerationMode(generationJob.mode)} · elapsed {formatDuration(visibleElapsedSeconds)} ·{" "}
                 {generationJob.expectedDuration} · hard limit{" "}
                 {formatDuration(generationJob.timeoutSeconds)}
               </span>
+              {generationJob.currentDetail ? <span>{generationJob.currentDetail}</span> : null}
             </div>
             <div className="generation-progress" aria-label="Generation time progress">
               <span style={{ width: `${progressPercent}%` }} />
             </div>
             <p>
-              The browser is polling a short status endpoint, so the tab should not time out while Codex writes files.
+              {generationJob.draftReady && generationJob.status === "RUNNING"
+                ? "The draft manifest is already available in preview; Codex is finishing the run and reporting final output."
+                : "The browser is polling a short status endpoint while Codex works outside the request."}
             </p>
             {latestProgressEvent ? (
               <div className={`generation-recency ${progressIsQuiet ? "quiet" : ""}`}>
@@ -313,7 +353,9 @@ export function AtelierClient({ slug, initialPrompt, initialFiles, validationRun
                   <strong>{formatRelativeDuration(secondsSinceLastProgress)}</strong>
                 </div>
                 {progressIsQuiet ? (
-                  <p className="generation-recency-note">Codex may be browsing, thinking, or verifying without new output.</p>
+                  <p className="generation-recency-note">
+                    {latestProgressEvent.detail || `Last activity: ${latestProgressEvent.message}`}
+                  </p>
                 ) : null}
               </div>
             ) : null}
@@ -322,7 +364,11 @@ export function AtelierClient({ slug, initialPrompt, initialFiles, validationRun
                 {generationJob.progressEvents.map((event) => (
                   <li key={`${event.at}-${event.message}`}>
                     <time>{formatEventTime(event.at)}</time>
-                    <span>{event.message}</span>
+                    <span className="generation-event-body">
+                      <strong className={`generation-event-phase phase-${event.phase}`}>{formatProgressPhase(event.phase)}</strong>
+                      <span className="generation-event-message">{event.message}</span>
+                      {event.detail ? <small>{event.detail}</small> : null}
+                    </span>
                   </li>
                 ))}
               </ol>
@@ -438,7 +484,39 @@ function generationHeading(job: GenerationJobView) {
     return "Generation stopped";
   }
 
-  return "Generating storefront";
+  return job.draftReady ? "Preview updated" : "Generating storefront";
+}
+
+function generationPrimaryStatus(job: GenerationJobView) {
+  if (job.status === "COMPLETED") {
+    return "Generation finished.";
+  }
+
+  if (job.status === "FAILED") {
+    return "Generation stopped.";
+  }
+
+  if (job.draftReady) {
+    return "Draft preview is ready; Codex is finishing final output.";
+  }
+
+  return `Current step: ${formatProgressPhase(job.currentPhase)}.`;
+}
+
+function formatProgressPhase(phase: ProgressPhase) {
+  const labels: Record<ProgressPhase, string> = {
+    setup: "Setup",
+    planning: "Planning",
+    inspection: "Inspecting",
+    editing: "Editing",
+    verification: "Verifying",
+    tool: "Tool",
+    summary: "Update",
+    heartbeat: "Waiting",
+    error: "Error",
+  };
+
+  return labels[phase];
 }
 
 function generationButtonLabel({

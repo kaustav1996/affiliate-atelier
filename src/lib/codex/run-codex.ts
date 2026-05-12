@@ -1,6 +1,6 @@
 import { execa } from "execa";
 import { promises as fs } from "node:fs";
-import { ensureDraftDirectory, generatedPaths, listGeneratedFiles } from "@/lib/generated-storefront";
+import { ensureDraftDirectory, generatedPaths, listGeneratedFiles, resetDraftProgressFile } from "@/lib/generated-storefront";
 
 export type GenerateAffiliateStorefrontInput = {
   slug: string;
@@ -15,9 +15,23 @@ export type RepairAffiliateStorefrontInput = Omit<GenerateAffiliateStorefrontInp
 
 export type CodexGenerationMode = "full-generation" | "design-revision" | "surgical-revision";
 
+export type CodexProgressPhase =
+  | "setup"
+  | "planning"
+  | "inspection"
+  | "editing"
+  | "verification"
+  | "tool"
+  | "summary"
+  | "heartbeat"
+  | "error";
+
 export type CodexProgressEvent = {
   at: string;
   message: string;
+  phase: CodexProgressPhase;
+  detail?: string;
+  toolName?: string;
 };
 
 export type CodexProgressHandler = (event: CodexProgressEvent) => void;
@@ -39,6 +53,11 @@ const SURGICAL_REVISION_EXPECTED_DURATION = "Usually 1-3 minutes";
 const REFERENCE_URL_PATTERN = /https?:\/\/\S+/i;
 const BROAD_REVISION_PATTERN =
   /\b(redesign|re-design|rebuild|full|entire|whole|branding|brand|theme|style|aesthetic|inspired by|go along with|make everything|change design|cyberpunk|luxury|minimal)\b/i;
+const NOISY_CODEX_EVENT_LINES = new Set(["item.completed", "turn.completed"]);
+const BENIGN_CODEX_WARNING_PATTERNS = [
+  /WARN\s+codex_core_plugins::manifest:\s+ignoring interface\.defaultPrompt: maximum of 3 prompts is supported\b/,
+  /WARN\s+codex_rmcp_client::stdio_server_launcher:\s+Failed to terminate MCP process group \d+:\s+No such process \(os error 3\)/,
+];
 
 export function determineGenerationMode(prompt: string, hasExistingDraft: boolean): CodexGenerationMode {
   if (!hasExistingDraft) {
@@ -94,6 +113,15 @@ generated/affiliates/${slug}/draft
 
 If files already exist in that draft directory, inspect them first and revise the current draft according to the affiliate request. Do not discard working checkout/cart/test ids unless the affiliate explicitly asks for a full rebuild.
 
+Progress reporting:
+- Also write short progress updates to generated/affiliates/${slug}/draft/.codex-progress.jsonl as you work.
+- Append one JSON object per line before and after meaningful phases. Use this shape:
+  {"at":"<ISO timestamp>","phase":"inspection|editing|verification|summary","message":"<specific present-tense status>","detail":"<optional file, command, or component detail>"}
+- Keep each message specific, such as which generated file is being inspected, edited, or verified.
+- Do not include secrets or environment values. This file is runtime status only and is ignored by the platform file list.
+- You can append with a shell command like:
+  node -e 'require("node:fs").appendFileSync("generated/affiliates/${slug}/draft/.codex-progress.jsonl", JSON.stringify({at:new Date().toISOString(),phase:"inspection",message:"Inspecting the draft manifest and generated component contract."})+"\\n")'
+
 ${isSurgical
     ? `Surgical revision rules:
 - Change only the files and CSS selectors needed for the affiliate's exact request.
@@ -131,7 +159,42 @@ The runtime reads manifest.json for generated brand direction. Include a "succes
 - affiliateAttribution
 - continueLabel
 Use {orderId}, {kind}, {affiliateSlug}, and {commission} placeholders where useful. The checkout success screen must feel like the generated affiliate storefront, not the platform default.
-If the affiliate asks for visible environmental effects such as bubbles, fog, sparks, rain, smoke, or light trails, include an "effects" array in manifest.json with stable lower-case labels such as "floating-bubbles".
+If the affiliate asks for visible environmental effects such as breeze, bubbles, fog, sparks, rain, smoke, drifting petals, or light trails, define them in manifest.json with "ambientEffects". Do not rely on hard-coded platform effect names. The platform renders ambientEffects as safe, manifest-driven animated layers.
+Use this schema:
+"ambientEffects": [
+  {
+    "id": "short-effect-id",
+    "label": "Human-readable effect name",
+    "placement": "background",
+    "elements": [
+      {
+        "id": "stream-1",
+        "style": {
+          "top": "18%",
+          "left": "-20%",
+          "width": "44vw",
+          "height": "3px",
+          "borderRadius": "999px",
+          "background": "linear-gradient(90deg, transparent, color-mix(in oklch, var(--tone-accent) 42%, transparent), transparent)",
+          "opacity": 0.58,
+          "mixBlendMode": "screen"
+        },
+        "animation": {
+          "durationSeconds": 18,
+          "delaySeconds": -7,
+          "timingFunction": "linear",
+          "iterationCount": "infinite"
+        }
+      }
+    ],
+    "keyframes": [
+      { "offset": 0, "transform": "translate3d(-12vw, 0, 0)", "opacity": 0 },
+      { "offset": 18, "opacity": 0.58 },
+      { "offset": 100, "transform": "translate3d(120vw, -2vh, 0)", "opacity": 0 }
+    ]
+  }
+]
+Keep ambient effect CSS values compact and safe: no urls, no HTML, no semicolons. Use CSS variables from the platform palette such as var(--tone-bg), var(--tone-ink), var(--tone-panel), var(--tone-accent), and var(--tone-rose). Prefer 3-12 lightweight elements per effect.
 
 Do not modify package.json.
 Do not install dependencies.
@@ -170,10 +233,11 @@ export async function generateAffiliateStorefront(input: GenerateAffiliateStoref
   const options = codexRunOptions(mode);
   const codexPrompt = buildCodexPrompt({ slug: input.slug, prompt: input.prompt, mode });
   const { promptPath } = generatedPaths(input.slug);
+  await resetDraftProgressFile(input.slug);
   await fs.writeFile(promptPath, codexPrompt, "utf8");
 
   try {
-    input.onProgress?.(progress(`Using ${formatMode(mode)}. ${options.expectedDuration}.`));
+    input.onProgress?.(progress(`Using ${formatMode(mode)}. ${options.expectedDuration}.`, "setup"));
     await ensurePlaywrightMcp(input.onProgress);
     const result = await runCodexCli(codexPrompt, options, input.onProgress);
 
@@ -221,6 +285,15 @@ Fix the generated storefront package so the validation flow can pass.
 Only create or edit files inside:
 generated/affiliates/${slug}/draft
 
+Progress reporting:
+- Also write short progress updates to generated/affiliates/${slug}/draft/.codex-progress.jsonl as you repair the package.
+- Append one JSON object per line before and after meaningful phases. Use this shape:
+  {"at":"<ISO timestamp>","phase":"inspection|editing|verification|summary","message":"<specific present-tense status>","detail":"<optional file, command, or component detail>"}
+- Keep each message specific, such as which generated file or validation issue is being inspected, edited, or verified.
+- Do not include secrets or environment values. This file is runtime status only and is ignored by the platform file list.
+- You can append with a shell command like:
+  node -e 'require("node:fs").appendFileSync("generated/affiliates/${slug}/draft/.codex-progress.jsonl", JSON.stringify({at:new Date().toISOString(),phase:"inspection",message:"Inspecting validation logs and generated storefront files."})+"\\n")'
+
 Do not modify package.json.
 Do not install dependencies.
 Do not modify Prisma.
@@ -233,7 +306,7 @@ You may use browser, network, and local preview access to diagnose the validatio
 Preserve the generated storefront contract from src/lib/storefront-contract.ts.
 Remember that the visible preview renders through the platform commerce shell and consumes manifest.json for generated brand direction. Generated component files are artifacts and tests, so repair manifest-driven output and generated contract files only.
 Preserve or repair the manifest.json success object so the checkout success screen stays aligned with the generated storefront's aesthetic.
-Preserve or repair any manifest.json "effects" array that represents requested visible environmental effects.
+Preserve or repair manifest.json "ambientEffects" entries that represent requested visible environmental effects. If an effect only exists as generated component CSS, translate it into ambientEffects so the platform runtime can display it.
 Ensure these exact data-testid attributes are present and wired to the provided callbacks:
 storefront-root, product-card, add-to-cart-button, cart-button, cart-drawer, checkout-button, checkout-email, checkout-address, pay-button, success-message.
 
@@ -242,11 +315,12 @@ After writing the fix, summarize what failed and what you changed.`;
 
 export async function repairAffiliateStorefront(input: RepairAffiliateStorefrontInput) {
   await ensureDraftDirectory(input.slug);
+  await resetDraftProgressFile(input.slug);
 
   const codexPrompt = buildCodexRepairPrompt(input);
 
   try {
-    input.onProgress?.(progress("Starting Codex auto-repair with validation logs."));
+    input.onProgress?.(progress("Starting Codex auto-repair with validation logs.", "setup"));
     await ensurePlaywrightMcp(input.onProgress);
     const result = await runCodexCli(
       codexPrompt,
@@ -281,7 +355,7 @@ export async function repairAffiliateStorefront(input: RepairAffiliateStorefront
 }
 
 async function ensurePlaywrightMcp(onProgress?: CodexProgressHandler) {
-  onProgress?.(progress("Checking Codex browser MCP access."));
+  onProgress?.(progress("Checking Codex browser MCP access.", "setup"));
 
   const list = await execa("codex", ["mcp", "list"], {
     cwd: process.cwd(),
@@ -289,18 +363,18 @@ async function ensurePlaywrightMcp(onProgress?: CodexProgressHandler) {
     reject: false,
     timeout: 30_000,
   });
-  const mcpList = [list.stdout, list.stderr].filter(Boolean).join("\n");
+  const mcpList = filterCodexCliLogText([list.stdout, list.stderr].filter(Boolean).join("\n"));
 
   if (list.exitCode !== 0) {
     throw new Error(mcpList || "Could not inspect Codex MCP servers.");
   }
 
   if (/^playwright\s+/m.test(list.stdout)) {
-    onProgress?.(progress("Playwright MCP is available for browser screenshots."));
+    onProgress?.(progress("Playwright MCP is available for browser screenshots.", "setup"));
     return;
   }
 
-  onProgress?.(progress("Installing Playwright MCP for future Codex browser access."));
+  onProgress?.(progress("Installing Playwright MCP for future Codex browser access.", "setup"));
   const add = await execa(
     "codex",
     ["mcp", "add", "playwright", "--", "npx", "-y", "@playwright/mcp@latest", "--headless"],
@@ -311,13 +385,13 @@ async function ensurePlaywrightMcp(onProgress?: CodexProgressHandler) {
       timeout: 120_000,
     },
   );
-  const addLogs = [add.stdout, add.stderr].filter(Boolean).join("\n");
+  const addLogs = filterCodexCliLogText([add.stdout, add.stderr].filter(Boolean).join("\n"));
 
   if (add.exitCode !== 0) {
     throw new Error(addLogs || "Could not install Playwright MCP for Codex.");
   }
 
-  onProgress?.(progress("Playwright MCP installed; Codex can inspect reference URLs."));
+  onProgress?.(progress("Playwright MCP installed; Codex can inspect reference URLs.", "setup"));
 }
 
 async function runCodexCli(
@@ -325,7 +399,7 @@ async function runCodexCli(
   options: CodexRunOptions,
   onProgress?: CodexProgressHandler,
 ) {
-  onProgress?.(progress("Launching Codex CLI."));
+  onProgress?.(progress("Launching Codex CLI.", "setup"));
   const child = execa("codex", codexExecArgs(), {
     cwd: process.cwd(),
     env: process.env,
@@ -341,17 +415,22 @@ async function runCodexCli(
         continue;
       }
       const parsed = parseCodexJsonLine(line);
-      logs.push(parsed.logLine);
+      if (parsed.logLine) {
+        logs.push(parsed.logLine);
+      }
 
-      if (parsed.progressMessage) {
-        onProgress?.(progress(parsed.progressMessage));
+      if (parsed.progressEvent) {
+        onProgress?.(timestampProgress(parsed.progressEvent));
       }
     }
   });
 
   child.stderr?.on("data", (chunk: Buffer) => {
-    const text = chunk.toString();
-    logs.push(text.trimEnd());
+    const text = filterCodexCliLogText(chunk.toString());
+
+    if (text) {
+      logs.push(text);
+    }
   });
 
   const result = await child;
@@ -363,23 +442,53 @@ async function runCodexCli(
   };
 }
 
-function parseCodexJsonLine(line: string) {
+export function parseCodexJsonLine(line: string) {
   try {
     const event = JSON.parse(line) as unknown;
-    const progressMessage = progressMessageForCodexEvent(event);
+    const logLine = humanizeCodexEvent(event);
+    const progressEvent = shouldSuppressCodexLogLine(logLine) ? undefined : progressEventForCodexEvent(event);
+
     return {
-      logLine: humanizeCodexEvent(event),
-      progressMessage,
+      logLine: shouldSuppressCodexLogLine(logLine) ? "" : logLine,
+      progressEvent,
     };
   } catch {
+    const logLine = line.trim();
+
+    if (shouldSuppressCodexLogLine(logLine)) {
+      return {
+        logLine: "",
+        progressEvent: undefined,
+      };
+    }
+
     return {
-      logLine: line,
-      progressMessage: line.length < 160 ? line : undefined,
+      logLine,
+      progressEvent: logLine.length < 160 ? { message: logLine, phase: "summary" as const } : undefined,
     };
   }
 }
 
-function progressMessageForCodexEvent(event: unknown) {
+export function filterCodexCliLogText(text: string) {
+  return text
+    .split(/\r?\n/)
+    .map((line) => line.trimEnd())
+    .filter((line) => line.trim() && !shouldSuppressCodexLogLine(line))
+    .join("\n");
+}
+
+function shouldSuppressCodexLogLine(line: string) {
+  const trimmed = line.trim();
+
+  if (!trimmed) {
+    return true;
+  }
+
+  return NOISY_CODEX_EVENT_LINES.has(trimmed)
+    || BENIGN_CODEX_WARNING_PATTERNS.some((pattern) => pattern.test(trimmed));
+}
+
+function progressEventForCodexEvent(event: unknown): Omit<CodexProgressEvent, "at"> | undefined {
   if (!event || typeof event !== "object") {
     return undefined;
   }
@@ -388,28 +497,154 @@ function progressMessageForCodexEvent(event: unknown) {
   const payload = "payload" in event && event.payload && typeof event.payload === "object" ? event.payload as Record<string, unknown> : null;
   const payloadType = payload && "type" in payload ? String(payload.type) : "";
 
+  if (type === "response_item" && payloadType === "message" && payload && "content" in payload) {
+    const message = compactText(extractText(payload.content));
+
+    if (message && message.length <= 260) {
+      return { message, phase: "summary" };
+    }
+  }
+
   if (type === "response_item" && payloadType === "function_call") {
     const name = payload && "name" in payload ? String(payload.name) : "a tool";
-    return `Codex is using ${name}.`;
+    return progressForToolCall(name, payload || {});
   }
 
   if (type === "response_item" && payloadType === "function_call_output") {
-    return "Codex finished a tool call.";
+    return {
+      message: "Codex finished the previous tool call.",
+      phase: "tool",
+    };
   }
 
   if (type === "turn_started") {
-    return "Codex is planning the edit.";
+    return {
+      message: "Codex started a reasoning turn.",
+      phase: "planning",
+    };
   }
 
   if (type === "turn_completed") {
-    return "Codex is finishing up.";
+    return {
+      message: "Codex completed a reasoning turn.",
+      phase: "summary",
+    };
   }
 
   if (type === "error") {
-    return "Codex reported an error.";
+    const message = "message" in event && typeof event.message === "string"
+      ? compactText(event.message)
+      : "Codex reported an error.";
+    return {
+      message,
+      phase: "error",
+    };
   }
 
   return undefined;
+}
+
+function progressForToolCall(name: string, payload: Record<string, unknown>): Omit<CodexProgressEvent, "at"> {
+  const toolName = normalizeToolName(name);
+  const args = parseToolArguments(payload);
+  const command = typeof args?.cmd === "string" ? args.cmd : "";
+  const detail = command ? summarizeCommand(command) : undefined;
+
+  if (toolName === "apply_patch") {
+    return {
+      message: "Codex is applying a source patch.",
+      phase: "editing",
+      toolName,
+    };
+  }
+
+  if (toolName === "exec_command") {
+    return {
+      message: commandMessage(command),
+      phase: commandPhase(command),
+      detail,
+      toolName,
+    };
+  }
+
+  if (toolName === "view_image" || toolName.includes("browser") || toolName.includes("playwright")) {
+    return {
+      message: `Codex is checking the preview with ${toolName}.`,
+      phase: "verification",
+      toolName,
+    };
+  }
+
+  return {
+    message: `Codex is using ${toolName}.`,
+    phase: "tool",
+    toolName,
+  };
+}
+
+function normalizeToolName(name: string) {
+  return name.split(".").at(-1)?.replace(/^_/, "") || name;
+}
+
+function parseToolArguments(payload: Record<string, unknown>) {
+  const raw = payload.arguments ?? payload.args ?? payload.input;
+
+  if (typeof raw === "string") {
+    try {
+      return JSON.parse(raw) as Record<string, unknown>;
+    } catch {
+      return null;
+    }
+  }
+
+  return raw && typeof raw === "object" ? raw as Record<string, unknown> : null;
+}
+
+function commandPhase(command: string): CodexProgressPhase {
+  if (/\b(apply_patch|cat\s*>|tee\s+|mv\s+|cp\s+|rm\s+|mkdir\s+)/.test(command)) {
+    return "editing";
+  }
+
+  if (/\b(npm run (typecheck|lint|test|build)|vitest|playwright|tsc|eslint|curl|psql|prisma)\b/.test(command)) {
+    return "verification";
+  }
+
+  if (/\b(rg|sed|ls|find|git (status|diff|show|log)|wc|file)\b/.test(command)) {
+    return "inspection";
+  }
+
+  return "tool";
+}
+
+function commandMessage(command: string) {
+  const phase = commandPhase(command);
+
+  if (phase === "verification") {
+    return `Codex is running ${shortCommandLabel(command)}.`;
+  }
+
+  if (phase === "editing") {
+    return `Codex is updating files with ${shortCommandLabel(command)}.`;
+  }
+
+  if (phase === "inspection") {
+    return `Codex is inspecting ${shortCommandLabel(command)}.`;
+  }
+
+  return `Codex is running ${shortCommandLabel(command)}.`;
+}
+
+function shortCommandLabel(command: string) {
+  const trimmed = command.trim().replace(/\s+/g, " ");
+  const firstSegment = trimmed.split("&&")[0]?.split(";")[0]?.trim() || trimmed;
+
+  return firstSegment.length > 72 ? `${firstSegment.slice(0, 69)}...` : firstSegment;
+}
+
+function summarizeCommand(command: string) {
+  const compact = command.trim().replace(/\s+/g, " ");
+
+  return compact.length > 160 ? `${compact.slice(0, 157)}...` : compact;
 }
 
 function humanizeCodexEvent(event: unknown) {
@@ -457,10 +692,22 @@ function extractText(value: unknown): string {
   return "";
 }
 
-function progress(message: string): CodexProgressEvent {
+function compactText(value: string) {
+  return value.replace(/\s+/g, " ").trim();
+}
+
+function progress(message: string, phase: CodexProgressPhase): CodexProgressEvent {
   return {
     at: new Date().toISOString(),
     message,
+    phase,
+  };
+}
+
+function timestampProgress(event: Omit<CodexProgressEvent, "at">): CodexProgressEvent {
+  return {
+    at: new Date().toISOString(),
+    ...event,
   };
 }
 
