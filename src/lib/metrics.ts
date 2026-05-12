@@ -5,7 +5,6 @@ export type AffiliateMetrics = {
   totalSalesInCents: number;
   totalCommissionInCents: number;
   liveOrderCount: number;
-  conversionRate: number;
   trend: Array<{
     label: string;
     salesInCents: number;
@@ -85,7 +84,6 @@ export async function getAffiliateLiveMetrics(affiliateId: string): Promise<Affi
     totalSalesInCents: orderAggregate._sum.totalAmountInCents || 0,
     totalCommissionInCents: ledgerAggregate._sum.amountInCents || 0,
     liveOrderCount: orderAggregate._count._all,
-    conversionRate: orderAggregate._count._all > 0 ? 0.08 : 0,
     trend: Array.from(buckets.entries()).map(([label, value]) => ({ label: label.slice(5), ...value })),
     recentOrders: recentOrders.map((order) => ({
       ...order,
