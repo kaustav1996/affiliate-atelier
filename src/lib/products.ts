@@ -23,6 +23,16 @@ export const seedProducts = [
     gradient: "rain",
   },
   {
+    slug: "petrichor-terra",
+    name: "Petrichor Terra",
+    scentFamily: "Earth / Aquatic",
+    priceInCents: 460000,
+    commissionRate: 0.1,
+    description: "First rain on warm loam, mineral moss, violet leaf, and damp cedar root.",
+    imageUrl: "/products/petrichor-terra.png",
+    gradient: "rain",
+  },
+  {
     slug: "rose-ember",
     name: "Rose Ember",
     scentFamily: "Floral / Amber",
