@@ -48,3 +48,4 @@ next-env.d.ts
 
 # local brainstorming companion artifacts
 /.superpowers/
+/docs/how-it-was-built.md
