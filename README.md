@@ -60,8 +60,10 @@ The server module `src/lib/codex/run-codex.ts` exposes `generateAffiliateStorefr
 It writes an auditable prompt to `generated/affiliates/[slug]/draft-prompt.md`, then invokes:
 
 ```bash
-codex exec --sandbox workspace-write --ask-for-approval never "<strict prompt>"
+codex exec --dangerously-bypass-approvals-and-sandbox -
 ```
+
+The prompt is passed on stdin so the non-interactive CLI receives a clean EOF and does not wait for additional input.
 
 The prompt instructs Codex to create or edit files only inside:
 

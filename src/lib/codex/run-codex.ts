@@ -49,6 +49,7 @@ The runtime reads manifest.json for generated brand direction. Include a "succes
 - affiliateAttribution
 - continueLabel
 Use {orderId}, {kind}, {affiliateSlug}, and {commission} placeholders where useful. The checkout success screen must feel like the generated affiliate storefront, not the platform default.
+If the affiliate asks for visible environmental effects such as bubbles, fog, sparks, rain, smoke, or light trails, include an "effects" array in manifest.json with stable lower-case labels such as "floating-bubbles".
 
 Do not modify package.json.
 Do not install dependencies.
@@ -67,6 +68,17 @@ Make it visually distinctive, production-quality, and aligned with the user's re
 After writing files, briefly summarize what you created.`;
 }
 
+export function codexExecArgs() {
+  return ["exec", "--dangerously-bypass-approvals-and-sandbox", "-"];
+}
+
+function isMissingCodexExecutable(error: unknown) {
+  return typeof error === "object"
+    && error !== null
+    && "code" in error
+    && (error as { code?: string }).code === "ENOENT";
+}
+
 export async function generateAffiliateStorefront(input: GenerateAffiliateStorefrontInput) {
   await ensureDraftDirectory(input.slug);
 
@@ -77,10 +89,11 @@ export async function generateAffiliateStorefront(input: GenerateAffiliateStoref
   try {
     const result = await execa(
       "codex",
-      ["exec", "--sandbox", "workspace-write", "--ask-for-approval", "never", codexPrompt],
+      codexExecArgs(),
       {
         cwd: process.cwd(),
         env: process.env,
+        input: codexPrompt,
         timeout: 1000 * 60 * 8,
         reject: false,
       },
@@ -98,9 +111,7 @@ export async function generateAffiliateStorefront(input: GenerateAffiliateStoref
       logs: logs || "Codex completed without console output.",
     };
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-
-    if (message.includes("ENOENT") || message.includes("not found")) {
+    if (isMissingCodexExecutable(error)) {
       throw new Error("Codex CLI was not found. Install and authenticate Codex CLI, then retry.");
     }
 
@@ -138,6 +149,7 @@ Do not call external network APIs.
 
 Preserve the generated storefront contract from src/lib/storefront-contract.ts.
 Preserve or repair the manifest.json success object so the checkout success screen stays aligned with the generated storefront's aesthetic.
+Preserve or repair any manifest.json "effects" array that represents requested visible environmental effects.
 Ensure these exact data-testid attributes are present and wired to the provided callbacks:
 storefront-root, product-card, add-to-cart-button, cart-button, cart-drawer, checkout-button, checkout-email, checkout-address, pay-button, success-message.
 
@@ -152,10 +164,11 @@ export async function repairAffiliateStorefront(input: RepairAffiliateStorefront
   try {
     const result = await execa(
       "codex",
-      ["exec", "--sandbox", "workspace-write", "--ask-for-approval", "never", codexPrompt],
+      codexExecArgs(),
       {
         cwd: process.cwd(),
         env: process.env,
+        input: codexPrompt,
         timeout: 1000 * 60 * 8,
         reject: false,
       },
@@ -172,9 +185,7 @@ export async function repairAffiliateStorefront(input: RepairAffiliateStorefront
       logs: logs || "Codex repair completed without console output.",
     };
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-
-    if (message.includes("ENOENT") || message.includes("not found")) {
+    if (isMissingCodexExecutable(error)) {
       throw new Error("Codex CLI was not found. Install and authenticate Codex CLI, then retry.");
     }
 

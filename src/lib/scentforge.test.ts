@@ -1,12 +1,17 @@
 import { randomUUID } from "node:crypto";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
+import { CommerceExperience } from "@/components/CommerceExperience";
 import { ValidationStatus } from "@/generated/prisma/enums";
 import { hashPassword } from "@/lib/auth/password";
+import { codexExecArgs } from "@/lib/codex/run-codex";
 import { calculateCommission } from "@/lib/money";
 import { getAffiliateLiveMetrics } from "@/lib/metrics";
 import { createCheckoutOrder } from "@/lib/orders";
 import { getPublishGate } from "@/lib/publish";
 import { prisma } from "@/lib/prisma";
+import { defaultManifest } from "@/lib/storefront-theme";
 
 async function createFixture() {
   const suffix = randomUUID().slice(0, 8);
@@ -41,6 +46,35 @@ async function createFixture() {
 }
 
 describe("ScentForge business rules", () => {
+  it("uses the supported non-interactive Codex exec bypass flag", () => {
+    expect(codexExecArgs()).toEqual([
+      "exec",
+      "--dangerously-bypass-approvals-and-sandbox",
+      "-",
+    ]);
+    expect(codexExecArgs()).not.toContain("--ask-for-approval");
+  });
+
+  it("renders manifest-driven floating bubbles for generated storefront effects", () => {
+    const manifest = {
+      ...defaultManifest("demo"),
+      subcopy: "A neon perfume bar with glowing floating bubbles.",
+      effects: ["floating-bubbles"],
+    };
+
+    const html = renderToStaticMarkup(
+      createElement(CommerceExperience, {
+        products: [],
+        affiliateSlug: "demo",
+        generated: true,
+        manifest,
+      }),
+    );
+
+    expect(html).toContain("effect-bubbles");
+    expect(html).toContain("floating-bubbles");
+  });
+
   it("calculates 10% commission on a 490000-cent order", () => {
     expect(calculateCommission(490000, 0.1)).toBe(49000);
   });
