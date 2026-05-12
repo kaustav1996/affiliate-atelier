@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildCodexPrompt, parseCodexJsonLine } from "@/lib/codex/run-codex";
+import { buildCodexPrompt, filterCodexCliLogText, parseCodexJsonLine } from "@/lib/codex/run-codex";
 
 describe("Codex progress parsing", () => {
   it("turns shell inspection calls into structured progress details", () => {
@@ -58,5 +58,16 @@ describe("Codex progress parsing", () => {
     expect(prompt).toContain("Do not rely on hard-coded platform effect names");
     expect(prompt).toContain("breeze, bubbles, fog, sparks");
     expect(prompt).not.toContain("floating-bubbles");
+  });
+
+  it("suppresses benign Codex CLI noise from logs and progress events", () => {
+    const pluginWarning = "2026-05-12T22:42:27.073790Z  WARN codex_core_plugins::manifest: ignoring interface.defaultPrompt: maximum of 3 prompts is supported path=/Users/kaustav/.codex/.tmp/plugins/plugins/openai-developers/.codex-plugin/plugin.json";
+    const mcpWarning = "2026-05-12T22:42:40.530091Z  WARN codex_rmcp_client::stdio_server_launcher: Failed to terminate MCP process group 13942: No such process (os error 3)";
+
+    expect(parseCodexJsonLine(pluginWarning)).toEqual({ logLine: "", progressEvent: undefined });
+    expect(parseCodexJsonLine("item.completed")).toEqual({ logLine: "", progressEvent: undefined });
+
+    expect(filterCodexCliLogText([pluginWarning, "actual error detail", "turn.completed", mcpWarning].join("\n")))
+      .toBe("actual error detail");
   });
 });

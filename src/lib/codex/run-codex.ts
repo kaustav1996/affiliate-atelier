@@ -53,6 +53,11 @@ const SURGICAL_REVISION_EXPECTED_DURATION = "Usually 1-3 minutes";
 const REFERENCE_URL_PATTERN = /https?:\/\/\S+/i;
 const BROAD_REVISION_PATTERN =
   /\b(redesign|re-design|rebuild|full|entire|whole|branding|brand|theme|style|aesthetic|inspired by|go along with|make everything|change design|cyberpunk|luxury|minimal)\b/i;
+const NOISY_CODEX_EVENT_LINES = new Set(["item.completed", "turn.completed"]);
+const BENIGN_CODEX_WARNING_PATTERNS = [
+  /WARN\s+codex_core_plugins::manifest:\s+ignoring interface\.defaultPrompt: maximum of 3 prompts is supported\b/,
+  /WARN\s+codex_rmcp_client::stdio_server_launcher:\s+Failed to terminate MCP process group \d+:\s+No such process \(os error 3\)/,
+];
 
 export function determineGenerationMode(prompt: string, hasExistingDraft: boolean): CodexGenerationMode {
   if (!hasExistingDraft) {
@@ -358,7 +363,7 @@ async function ensurePlaywrightMcp(onProgress?: CodexProgressHandler) {
     reject: false,
     timeout: 30_000,
   });
-  const mcpList = [list.stdout, list.stderr].filter(Boolean).join("\n");
+  const mcpList = filterCodexCliLogText([list.stdout, list.stderr].filter(Boolean).join("\n"));
 
   if (list.exitCode !== 0) {
     throw new Error(mcpList || "Could not inspect Codex MCP servers.");
@@ -380,7 +385,7 @@ async function ensurePlaywrightMcp(onProgress?: CodexProgressHandler) {
       timeout: 120_000,
     },
   );
-  const addLogs = [add.stdout, add.stderr].filter(Boolean).join("\n");
+  const addLogs = filterCodexCliLogText([add.stdout, add.stderr].filter(Boolean).join("\n"));
 
   if (add.exitCode !== 0) {
     throw new Error(addLogs || "Could not install Playwright MCP for Codex.");
@@ -410,7 +415,9 @@ async function runCodexCli(
         continue;
       }
       const parsed = parseCodexJsonLine(line);
-      logs.push(parsed.logLine);
+      if (parsed.logLine) {
+        logs.push(parsed.logLine);
+      }
 
       if (parsed.progressEvent) {
         onProgress?.(timestampProgress(parsed.progressEvent));
@@ -419,8 +426,11 @@ async function runCodexCli(
   });
 
   child.stderr?.on("data", (chunk: Buffer) => {
-    const text = chunk.toString();
-    logs.push(text.trimEnd());
+    const text = filterCodexCliLogText(chunk.toString());
+
+    if (text) {
+      logs.push(text);
+    }
   });
 
   const result = await child;
@@ -435,17 +445,47 @@ async function runCodexCli(
 export function parseCodexJsonLine(line: string) {
   try {
     const event = JSON.parse(line) as unknown;
-    const progressEvent = progressEventForCodexEvent(event);
+    const logLine = humanizeCodexEvent(event);
+    const progressEvent = shouldSuppressCodexLogLine(logLine) ? undefined : progressEventForCodexEvent(event);
+
     return {
-      logLine: humanizeCodexEvent(event),
+      logLine: shouldSuppressCodexLogLine(logLine) ? "" : logLine,
       progressEvent,
     };
   } catch {
+    const logLine = line.trim();
+
+    if (shouldSuppressCodexLogLine(logLine)) {
+      return {
+        logLine: "",
+        progressEvent: undefined,
+      };
+    }
+
     return {
-      logLine: line,
-      progressEvent: line.length < 160 ? { message: line, phase: "summary" as const } : undefined,
+      logLine,
+      progressEvent: logLine.length < 160 ? { message: logLine, phase: "summary" as const } : undefined,
     };
   }
+}
+
+export function filterCodexCliLogText(text: string) {
+  return text
+    .split(/\r?\n/)
+    .map((line) => line.trimEnd())
+    .filter((line) => line.trim() && !shouldSuppressCodexLogLine(line))
+    .join("\n");
+}
+
+function shouldSuppressCodexLogLine(line: string) {
+  const trimmed = line.trim();
+
+  if (!trimmed) {
+    return true;
+  }
+
+  return NOISY_CODEX_EVENT_LINES.has(trimmed)
+    || BENIGN_CODEX_WARNING_PATTERNS.some((pattern) => pattern.test(trimmed));
 }
 
 function progressEventForCodexEvent(event: unknown): Omit<CodexProgressEvent, "at"> | undefined {
