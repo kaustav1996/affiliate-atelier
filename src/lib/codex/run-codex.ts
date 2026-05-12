@@ -1,6 +1,6 @@
 import { execa } from "execa";
 import { promises as fs } from "node:fs";
-import { ensureDraftDirectory, generatedPaths, listGeneratedFiles, writeMockGeneratedStorefront } from "@/lib/generated-storefront";
+import { ensureDraftDirectory, generatedPaths, listGeneratedFiles } from "@/lib/generated-storefront";
 
 export type GenerateAffiliateStorefrontInput = {
   slug: string;
@@ -14,16 +14,18 @@ export type RepairAffiliateStorefrontInput = GenerateAffiliateStorefrontInput & 
 export function buildCodexPrompt({ slug, prompt }: GenerateAffiliateStorefrontInput) {
   return `You are Codex running inside ScentForge Atelier.
 
-Generate a custom affiliate perfume storefront.
+Generate or revise a custom affiliate perfume storefront.
 
 Affiliate slug:
 ${slug}
 
-Affiliate request:
+Affiliate request, including any new changes they want:
 ${prompt}
 
 Only create or edit files inside:
 generated/affiliates/${slug}/draft
+
+If files already exist in that draft directory, inspect them first and revise the current draft according to the affiliate request. Do not discard working checkout/cart/test ids unless the affiliate explicitly asks for a full rebuild.
 
 Create:
 - index.ts
@@ -40,6 +42,13 @@ Create:
 
 Follow the storefront contract from src/lib/storefront-contract.ts.
 Products are database records. Use product.name, product.description, product.priceInCents, product.scentFamily, product.imageUrl, and product.commissionRate from props rather than hard-coded product mocks.
+The runtime reads manifest.json for generated brand direction. Include a "success" object in manifest.json with:
+- eyebrow
+- title
+- body
+- affiliateAttribution
+- continueLabel
+Use {orderId}, {kind}, {affiliateSlug}, and {commission} placeholders where useful. The checkout success screen must feel like the generated affiliate storefront, not the platform default.
 
 Do not modify package.json.
 Do not install dependencies.
@@ -64,14 +73,6 @@ export async function generateAffiliateStorefront(input: GenerateAffiliateStoref
   const codexPrompt = buildCodexPrompt(input);
   const { promptPath } = generatedPaths(input.slug);
   await fs.writeFile(promptPath, codexPrompt, "utf8");
-
-  if (process.env.CODEX_MOCK === "1") {
-    const files = await writeMockGeneratedStorefront(input.slug, codexPrompt);
-    return {
-      files,
-      logs: "CODEX_MOCK=1 generated deterministic sample storefront package.",
-    };
-  }
 
   try {
     const result = await execa(
@@ -136,6 +137,7 @@ Do not bypass checkout.
 Do not call external network APIs.
 
 Preserve the generated storefront contract from src/lib/storefront-contract.ts.
+Preserve or repair the manifest.json success object so the checkout success screen stays aligned with the generated storefront's aesthetic.
 Ensure these exact data-testid attributes are present and wired to the provided callbacks:
 storefront-root, product-card, add-to-cart-button, cart-button, cart-drawer, checkout-button, checkout-email, checkout-address, pay-button, success-message.
 
@@ -146,14 +148,6 @@ export async function repairAffiliateStorefront(input: RepairAffiliateStorefront
   await ensureDraftDirectory(input.slug);
 
   const codexPrompt = buildCodexRepairPrompt(input);
-
-  if (process.env.CODEX_MOCK === "1") {
-    const files = await writeMockGeneratedStorefront(input.slug, codexPrompt);
-    return {
-      files,
-      logs: "CODEX_MOCK=1 repaired the draft by rewriting the deterministic sample storefront package.",
-    };
-  }
 
   try {
     const result = await execa(

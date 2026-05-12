@@ -1,8 +1,10 @@
 import { notFound } from "next/navigation";
 import { CommerceExperience } from "@/components/CommerceExperience";
+import { getCurrentUser } from "@/lib/auth/current";
 import { readGeneratedManifest } from "@/lib/generated-storefront";
 import { prisma } from "@/lib/prisma";
 import { toProductView } from "@/lib/products";
+import { toStorefrontViewer } from "@/lib/storefront-viewer";
 
 export const dynamic = "force-dynamic";
 
@@ -14,9 +16,10 @@ export default async function AffiliateStorefront({ params }: { params: Promise<
     notFound();
   }
 
-  const [products, manifest] = await Promise.all([
+  const [products, manifest, user] = await Promise.all([
     prisma.product.findMany({ orderBy: { name: "asc" } }),
     readGeneratedManifest(slug, "published"),
+    getCurrentUser(),
   ]);
 
   return (
@@ -25,6 +28,7 @@ export default async function AffiliateStorefront({ params }: { params: Promise<
       affiliateSlug={slug}
       generated={Boolean(manifest)}
       manifest={manifest}
+      viewer={toStorefrontViewer(user)}
     />
   );
 }

@@ -173,6 +173,19 @@ textarea:focus-visible {
   gap: var(--space-md);
 }
 
+.viewer-pill {
+  display: inline-flex;
+  align-items: center;
+  min-height: 40px;
+  border: 1px solid color-mix(in oklch, var(--tone-ink, var(--ink)) 14%, transparent);
+  border-radius: 999px;
+  background: color-mix(in oklch, var(--tone-panel, var(--smoke)) 64%, transparent);
+  padding: 0 12px;
+  color: var(--tone-ink, var(--ink));
+  font-size: 0.9rem;
+  font-weight: 850;
+}
+
 .cart-trigger {
   background: color-mix(in oklch, var(--tone-bg) 70%, var(--tone-panel));
   color: var(--tone-ink);

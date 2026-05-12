@@ -35,6 +35,7 @@ export function AtelierClient({ slug, initialPrompt, initialFiles, validationRun
 
   const latestRun = runs[0];
   const passed = latestRun?.status === "PASSED";
+  const hasDraft = files.length > 0;
 
   const checklist = useMemo(
     () => [
@@ -51,7 +52,7 @@ export function AtelierClient({ slug, initialPrompt, initialFiles, validationRun
   );
 
   function generate() {
-    setMessage("Generating with Codex...");
+    setMessage(hasDraft ? "Applying changes with Codex CLI..." : "Generating with Codex CLI...");
     startTransition(async () => {
       const response = await fetch("/api/atelier/generate", {
         method: "POST",
@@ -67,7 +68,12 @@ export function AtelierClient({ slug, initialPrompt, initialFiles, validationRun
 
       setFiles(payload.files || []);
       setLogs(payload.logs || "");
-      setMessage("Generated files are ready. Run validation before publishing.");
+      setRuns([]);
+      setMessage(
+        hasDraft
+          ? "Codex updated the draft. Run validation again before publishing."
+          : "Generated files are ready. Run validation before publishing.",
+      );
       setPreviewKey((value) => value + 1);
     });
   }
@@ -116,6 +122,25 @@ export function AtelierClient({ slug, initialPrompt, initialFiles, validationRun
     });
   }
 
+  function resetToDefault() {
+    setMessage("Publishing the default storefront...");
+    startTransition(async () => {
+      const response = await fetch("/api/atelier/reset", { method: "POST" });
+      const payload = (await response.json()) as { files?: string[]; error?: string };
+
+      if (!response.ok) {
+        setMessage(payload.error || "Reset failed.");
+        return;
+      }
+
+      setFiles(payload.files || []);
+      setRuns([]);
+      setLogs("Default platform storefront is now live. Generated draft and published artifacts were removed.");
+      setMessage("Default storefront is live at /a/" + slug + ".");
+      setPreviewKey((value) => value + 1);
+    });
+  }
+
   return (
     <div className="atelier-grid">
       <section className="atelier-panel prompt-panel">
@@ -130,7 +155,7 @@ export function AtelierClient({ slug, initialPrompt, initialFiles, validationRun
           ))}
         </div>
         <button className="primary-action" disabled={isPending} onClick={generate}>
-          {isPending ? "Working" : "Generate with Codex"}
+          {isPending ? "Working" : hasDraft ? "Apply changes with Codex" : "Generate with Codex"}
         </button>
       </section>
 
@@ -150,6 +175,9 @@ export function AtelierClient({ slug, initialPrompt, initialFiles, validationRun
           </button>
           <button className="primary-action" disabled={isPending || !passed} onClick={publish}>
             Publish
+          </button>
+          <button className="text-button" disabled={isPending} onClick={resetToDefault}>
+            Reset to default storefront
           </button>
         </div>
       </section>

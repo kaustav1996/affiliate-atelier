@@ -5,6 +5,13 @@ export type GeneratedManifest = {
   subcopy: string;
   badge: string;
   checkoutLanguage: string;
+  success?: {
+    eyebrow: string;
+    title: string;
+    body: string;
+    affiliateAttribution: string;
+    continueLabel: string;
+  };
   palette: {
     background: string;
     ink: string;
@@ -24,6 +31,13 @@ export function defaultManifest(slug?: string): GeneratedManifest {
       : "A fictional fragrance marketplace where creators use Codex to generate their own storefronts, validate the checkout flow, and earn commission.",
     badge: slug ? `Curated by ${slug}` : "ScentForge house edit",
     checkoutLanguage: "Secure the bottle",
+    success: {
+      eyebrow: "Payment success",
+      title: slug ? "Your edit is being prepared." : "Your perfume is being wrapped.",
+      body: "Order {orderId} completed as a {kind} checkout.",
+      affiliateAttribution: "Affiliate attribution: {affiliateSlug}. Commission preview: {commission}.",
+      continueLabel: "Continue shopping",
+    },
     palette: {
       background: "#F6F0E6",
       ink: "#10100E",

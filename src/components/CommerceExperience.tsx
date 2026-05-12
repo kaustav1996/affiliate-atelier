@@ -23,6 +23,10 @@ type CommerceExperienceProps = {
   preview?: boolean;
   generated?: boolean;
   manifest?: GeneratedManifest | null;
+  viewer?: {
+    name: string;
+    dashboardHref: string;
+  } | null;
 };
 
 export function CommerceExperience({
@@ -32,6 +36,7 @@ export function CommerceExperience({
   preview,
   generated,
   manifest,
+  viewer,
 }: CommerceExperienceProps) {
   const tone = manifest || defaultManifest(affiliateSlug);
   const [cartItems, setCartItems] = useState<CartItemView[]>([]);
@@ -101,6 +106,8 @@ export function CommerceExperience({
   }
 
   if (order) {
+    const success = tone.success || defaultManifest(affiliateSlug).success!;
+
     return (
       <main
         className={`commerce-shell success-shell ${generated ? "generated-tone" : ""}`}
@@ -109,19 +116,14 @@ export function CommerceExperience({
       >
         {preview ? <div className="preview-ribbon">Draft preview — validation mode</div> : null}
         <section className="success-panel" data-testid="success-message">
-          <p className="eyebrow">Payment success</p>
-          <h1>Your perfume is being wrapped.</h1>
-          <p>
-            Order <strong>{order.id.slice(0, 10)}</strong> completed as {order.kind.toLowerCase()} checkout.
-          </p>
+          <p className="eyebrow">{success.eyebrow}</p>
+          <h1>{success.title}</h1>
+          <p>{formatSuccessText(success.body, order)}</p>
           {order.affiliateSlug ? (
-            <p>
-              Affiliate attribution: {order.affiliateSlug}. Commission preview:{" "}
-              {formatMoney(order.commissionInCents)}.
-            </p>
+            <p>{formatSuccessText(success.affiliateAttribution, order)}</p>
           ) : null}
           <button className="primary-action" onClick={() => setOrder(null)}>
-            Continue shopping
+            {success.continueLabel}
           </button>
         </section>
       </main>
@@ -140,7 +142,14 @@ export function CommerceExperience({
           ScentForge
         </Link>
         <div className="nav-actions">
-          <Link href="/login">Affiliate login</Link>
+          {viewer ? (
+            <>
+              <span className="viewer-pill">{viewer.name}</span>
+              <Link href={viewer.dashboardHref}>Dashboard</Link>
+            </>
+          ) : (
+            <Link href="/login">Affiliate login</Link>
+          )}
           <button className="cart-trigger" data-testid="cart-button" onClick={() => setCartOpen(true)}>
             Cart <span>{cartItems.reduce((sum, item) => sum + item.quantity, 0)}</span>
           </button>
@@ -245,7 +254,7 @@ export function CommerceExperience({
       {checkoutOpen ? (
         <section className="checkout-stage" aria-label="Checkout">
           <div>
-            <p className="eyebrow">Mock payment</p>
+            <p className="eyebrow">Secure test checkout</p>
             <h2>{tone.checkoutLanguage}</h2>
             <p>Fake card: 4242 4242 4242 4242 · 12/30 · 123</p>
           </div>
@@ -285,4 +294,12 @@ function toneStyles(tone: GeneratedManifest) {
     "--tone-accent": tone.palette.accent,
     "--tone-rose": tone.palette.rose,
   } as CSSProperties;
+}
+
+function formatSuccessText(template: string, order: CheckoutResult) {
+  return template
+    .replaceAll("{orderId}", order.id.slice(0, 10))
+    .replaceAll("{kind}", order.kind.toLowerCase())
+    .replaceAll("{affiliateSlug}", order.affiliateSlug || "")
+    .replaceAll("{commission}", formatMoney(order.commissionInCents));
 }

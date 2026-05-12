@@ -118,4 +118,21 @@ describe("ScentForge business rules", () => {
     });
     await expect(getPublishGate(affiliate.id)).resolves.toMatchObject({ canPublish: true });
   });
+
+  it("requires validation after a newer draft is generated", async () => {
+    const { affiliate } = await createFixture();
+    await prisma.validationRun.create({
+      data: {
+        affiliateId: affiliate.id,
+        status: ValidationStatus.PASSED,
+        completedAt: new Date(Date.now() - 10_000),
+      },
+    });
+    await prisma.affiliate.update({
+      where: { id: affiliate.id },
+      data: { draftGeneratedAt: new Date() },
+    });
+
+    await expect(getPublishGate(affiliate.id)).resolves.toMatchObject({ canPublish: false });
+  });
 });

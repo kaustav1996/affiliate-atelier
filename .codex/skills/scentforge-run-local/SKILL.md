@@ -33,10 +33,10 @@ If port 3000 is occupied, use the port Next reports or run:
 npm run dev -- -p 3002
 ```
 
-For deterministic Atelier generation without invoking the real Codex CLI:
+Atelier generation must use the real Codex CLI. Start the app with any inherited mock flag removed:
 
 ```bash
-CODEX_MOCK=1 npm run dev -- -p 3002
+env -u CODEX_MOCK npm run dev -- -p 3002
 ```
 
 ## Verification
