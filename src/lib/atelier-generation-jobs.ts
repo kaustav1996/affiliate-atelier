@@ -8,7 +8,7 @@ import {
   determineGenerationMode,
   generateAffiliateStorefront,
 } from "@/lib/codex/run-codex";
-import { getGeneratedFileStatus, listGeneratedFiles } from "@/lib/generated-storefront";
+import { getGeneratedFileStatus, type GeneratedProgressFileEvent, listGeneratedFiles } from "@/lib/generated-storefront";
 import { prisma } from "@/lib/prisma";
 
 export const GENERATION_TIMEOUT_SECONDS = CODEX_GENERATION_TIMEOUT_SECONDS;
@@ -160,7 +160,8 @@ async function runGenerationJob(job: GenerationJob) {
 
 async function toSnapshot(job: GenerationJob): Promise<GenerationJobSnapshot> {
   const draftStatus = await getGeneratedFileStatus(job.slug, "draft");
-  const latestProgress = job.progressEvents.at(-1);
+  const progressEvents = mergeProgressEvents(job.progressEvents, draftStatus.progressEvents);
+  const latestProgress = progressEvents.at(-1);
   const files = job.files || draftStatus.files;
   const draftReady = draftStatus.manifestReady;
   const draftUpdatedAt = draftStatus.updatedAt;
@@ -168,6 +169,7 @@ async function toSnapshot(job: GenerationJob): Promise<GenerationJobSnapshot> {
   job.draftReady = draftReady;
   job.draftUpdatedAt = draftUpdatedAt;
   job.files = files;
+  job.progressEvents = progressEvents;
 
   return {
     id: job.id,
@@ -184,11 +186,59 @@ async function toSnapshot(job: GenerationJob): Promise<GenerationJobSnapshot> {
     currentToolName: latestProgress?.toolName,
     draftReady,
     draftUpdatedAt,
-    progressEvents: job.progressEvents,
+    progressEvents,
     files,
     logs: job.logs,
     error: job.error,
   };
+}
+
+function mergeProgressEvents(
+  jobEvents: CodexProgressEvent[],
+  fileEvents: GeneratedProgressFileEvent[],
+): CodexProgressEvent[] {
+  const events = [
+    ...jobEvents,
+    ...fileEvents.map(normalizeFileProgressEvent),
+  ].sort((left, right) => new Date(left.at).getTime() - new Date(right.at).getTime());
+  const seen = new Set<string>();
+
+  return events.filter((event) => {
+    const key = `${event.at}:${event.phase}:${event.message}`;
+
+    if (seen.has(key)) {
+      return false;
+    }
+
+    seen.add(key);
+    return true;
+  }).slice(-12);
+}
+
+function normalizeFileProgressEvent(event: GeneratedProgressFileEvent): CodexProgressEvent {
+  return {
+    at: event.at,
+    message: event.message,
+    phase: normalizeProgressPhase(event.phase),
+    detail: event.detail,
+    toolName: event.toolName || "draft-progress-file",
+  };
+}
+
+function normalizeProgressPhase(phase: string | undefined): CodexProgressPhase {
+  const phases: CodexProgressPhase[] = [
+    "setup",
+    "planning",
+    "inspection",
+    "editing",
+    "verification",
+    "tool",
+    "summary",
+    "heartbeat",
+    "error",
+  ];
+
+  return phases.find((item) => item === phase) || "summary";
 }
 
 function elapsedSeconds(startedAt: string) {

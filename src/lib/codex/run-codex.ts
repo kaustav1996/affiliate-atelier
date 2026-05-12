@@ -1,6 +1,6 @@
 import { execa } from "execa";
 import { promises as fs } from "node:fs";
-import { ensureDraftDirectory, generatedPaths, listGeneratedFiles } from "@/lib/generated-storefront";
+import { ensureDraftDirectory, generatedPaths, listGeneratedFiles, resetDraftProgressFile } from "@/lib/generated-storefront";
 
 export type GenerateAffiliateStorefrontInput = {
   slug: string;
@@ -108,6 +108,15 @@ generated/affiliates/${slug}/draft
 
 If files already exist in that draft directory, inspect them first and revise the current draft according to the affiliate request. Do not discard working checkout/cart/test ids unless the affiliate explicitly asks for a full rebuild.
 
+Progress reporting:
+- Also write short progress updates to generated/affiliates/${slug}/draft/.codex-progress.jsonl as you work.
+- Append one JSON object per line before and after meaningful phases. Use this shape:
+  {"at":"<ISO timestamp>","phase":"inspection|editing|verification|summary","message":"<specific present-tense status>","detail":"<optional file, command, or component detail>"}
+- Keep each message specific, such as which generated file is being inspected, edited, or verified.
+- Do not include secrets or environment values. This file is runtime status only and is ignored by the platform file list.
+- You can append with a shell command like:
+  node -e 'require("node:fs").appendFileSync("generated/affiliates/${slug}/draft/.codex-progress.jsonl", JSON.stringify({at:new Date().toISOString(),phase:"inspection",message:"Inspecting the draft manifest and generated component contract."})+"\\n")'
+
 ${isSurgical
     ? `Surgical revision rules:
 - Change only the files and CSS selectors needed for the affiliate's exact request.
@@ -184,6 +193,7 @@ export async function generateAffiliateStorefront(input: GenerateAffiliateStoref
   const options = codexRunOptions(mode);
   const codexPrompt = buildCodexPrompt({ slug: input.slug, prompt: input.prompt, mode });
   const { promptPath } = generatedPaths(input.slug);
+  await resetDraftProgressFile(input.slug);
   await fs.writeFile(promptPath, codexPrompt, "utf8");
 
   try {
@@ -235,6 +245,15 @@ Fix the generated storefront package so the validation flow can pass.
 Only create or edit files inside:
 generated/affiliates/${slug}/draft
 
+Progress reporting:
+- Also write short progress updates to generated/affiliates/${slug}/draft/.codex-progress.jsonl as you repair the package.
+- Append one JSON object per line before and after meaningful phases. Use this shape:
+  {"at":"<ISO timestamp>","phase":"inspection|editing|verification|summary","message":"<specific present-tense status>","detail":"<optional file, command, or component detail>"}
+- Keep each message specific, such as which generated file or validation issue is being inspected, edited, or verified.
+- Do not include secrets or environment values. This file is runtime status only and is ignored by the platform file list.
+- You can append with a shell command like:
+  node -e 'require("node:fs").appendFileSync("generated/affiliates/${slug}/draft/.codex-progress.jsonl", JSON.stringify({at:new Date().toISOString(),phase:"inspection",message:"Inspecting validation logs and generated storefront files."})+"\\n")'
+
 Do not modify package.json.
 Do not install dependencies.
 Do not modify Prisma.
@@ -256,6 +275,7 @@ After writing the fix, summarize what failed and what you changed.`;
 
 export async function repairAffiliateStorefront(input: RepairAffiliateStorefrontInput) {
   await ensureDraftDirectory(input.slug);
+  await resetDraftProgressFile(input.slug);
 
   const codexPrompt = buildCodexRepairPrompt(input);
 

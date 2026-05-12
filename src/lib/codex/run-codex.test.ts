@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseCodexJsonLine } from "@/lib/codex/run-codex";
+import { buildCodexPrompt, parseCodexJsonLine } from "@/lib/codex/run-codex";
 
 describe("Codex progress parsing", () => {
   it("turns shell inspection calls into structured progress details", () => {
@@ -33,5 +33,17 @@ describe("Codex progress parsing", () => {
       message: "I found the generated manifest and am wiring the preview refresh now.",
       phase: "summary",
     });
+  });
+
+  it("instructs Codex to write draft-local progress events", () => {
+    const prompt = buildCodexPrompt({
+      slug: "demo",
+      prompt: "Make the storefront feel like a rainy perfume atelier.",
+      mode: "design-revision",
+    });
+
+    expect(prompt).toContain("generated/affiliates/demo/draft/.codex-progress.jsonl");
+    expect(prompt).toContain("Append one JSON object per line");
+    expect(prompt).toContain("which generated file is being inspected, edited, or verified");
   });
 });
