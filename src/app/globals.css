@@ -1056,11 +1056,11 @@ textarea:focus-visible {
 
 .generation-job {
   display: grid;
-  gap: var(--space-sm);
+  gap: var(--space-md);
   border: 1px solid color-mix(in oklch, var(--amber) 34%, transparent);
   border-radius: 8px;
   background: color-mix(in oklch, var(--smoke) 42%, var(--ivory));
-  padding: var(--space-md);
+  padding: 18px;
 }
 
 .generation-job.running {
@@ -1105,8 +1105,8 @@ textarea:focus-visible {
 
 .generation-events {
   display: grid;
-  gap: 6px;
-  max-height: 180px;
+  gap: 8px;
+  max-height: 220px;
   overflow: auto;
   margin: 0;
   padding: 0;
@@ -1115,19 +1115,61 @@ textarea:focus-visible {
 
 .generation-events li {
   display: grid;
-  grid-template-columns: 72px minmax(0, 1fr);
-  gap: var(--space-sm);
-  border-radius: 4px;
+  grid-template-columns: minmax(112px, max-content) minmax(0, 1fr);
+  align-items: start;
+  column-gap: 16px;
+  border: 1px solid color-mix(in oklch, var(--ink) 8%, transparent);
+  border-radius: 6px;
   background: color-mix(in oklch, var(--paper) 72%, transparent);
-  padding: 7px 8px;
+  padding: 9px 10px;
   color: color-mix(in oklch, var(--ink) 74%, transparent);
-  font-size: 0.82rem;
-  line-height: 1.4;
+  font-size: 0.88rem;
+  line-height: 1.45;
 }
 
 .generation-events time {
-  color: color-mix(in oklch, var(--ink) 46%, transparent);
+  display: inline-flex;
+  align-items: center;
+  white-space: nowrap;
+  color: color-mix(in oklch, var(--ink) 54%, transparent);
   font-family: "SFMono-Regular", Consolas, monospace;
+  font-size: 0.78rem;
+  line-height: 1.4;
+}
+
+.generation-events span {
+  min-width: 0;
+}
+
+.generation-recency {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 10px;
+  border-radius: 6px;
+  background: color-mix(in oklch, var(--paper) 66%, transparent);
+  padding: 10px 12px;
+  color: color-mix(in oklch, var(--ink) 66%, transparent);
+  font-size: 0.86rem;
+}
+
+.generation-recency span {
+  color: color-mix(in oklch, var(--ink) 48%, transparent);
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.generation-recency strong {
+  color: var(--ink);
+}
+
+.generation-recency em {
+  color: color-mix(in oklch, var(--ink) 62%, transparent);
+  font-style: normal;
+}
+
+.generation-recency.quiet {
+  background: color-mix(in oklch, var(--amber) 12%, var(--paper));
 }
 
 .validation-checklist li {

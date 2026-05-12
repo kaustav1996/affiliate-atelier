@@ -68,6 +68,13 @@ export function AtelierClient({ slug, initialPrompt, initialFiles, validationRun
   const generationStartedAt = generationJob?.startedAt;
   const isBusy = isPending || isGenerating;
   const visibleElapsedSeconds = isGenerating ? elapsedSeconds : generationJob?.elapsedSeconds || 0;
+  const latestProgressEvent = generationJob?.progressEvents?.at(-1);
+  const generationClock = generationStartedAt ? new Date(generationStartedAt).getTime() + visibleElapsedSeconds * 1000 : 0;
+  const secondsSinceLastProgress = isGenerating && latestProgressEvent
+    ? Math.max(0, Math.floor((generationClock - new Date(latestProgressEvent.at).getTime()) / 1000))
+    : 0;
+  const progressIsQuiet = isGenerating && secondsSinceLastProgress >= 90;
+  const generationStatusHeading = generationJob ? generationHeading(generationJob) : message || (files.length ? "Generated files" : "Idle");
   const progressPercent = generationJob
     ? Math.min(100, Math.max(7, Math.round((visibleElapsedSeconds / generationJob.timeoutSeconds) * 100)))
     : 0;
@@ -274,7 +281,7 @@ export function AtelierClient({ slug, initialPrompt, initialFiles, validationRun
           <span>02</span>
           <div>
             <p className="eyebrow">Generation status</p>
-            <h2>{message || (files.length ? "Generated files" : "Idle")}</h2>
+            <h2>{generationStatusHeading}</h2>
           </div>
         </div>
         {generationJob ? (
@@ -299,6 +306,13 @@ export function AtelierClient({ slug, initialPrompt, initialFiles, validationRun
             <p>
               The browser is polling a short status endpoint, so the tab should not time out while Codex writes files.
             </p>
+            {latestProgressEvent ? (
+              <div className={`generation-recency ${progressIsQuiet ? "quiet" : ""}`}>
+                <span>Last update</span>
+                <strong>{formatRelativeDuration(secondsSinceLastProgress)} ago</strong>
+                {progressIsQuiet ? <em>Codex may be browsing, thinking, or verifying without new output.</em> : null}
+              </div>
+            ) : null}
             {generationJob.progressEvents?.length ? (
               <ol className="generation-events" aria-label="Codex progress events">
                 {generationJob.progressEvents.map((event) => (
@@ -376,6 +390,21 @@ function formatDuration(totalSeconds: number) {
   return `${minutes}:${String(seconds).padStart(2, "0")}`;
 }
 
+function formatRelativeDuration(totalSeconds: number) {
+  if (totalSeconds < 5) {
+    return "just now";
+  }
+
+  if (totalSeconds < 60) {
+    return `${totalSeconds}s`;
+  }
+
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+
+  return seconds ? `${minutes}m ${seconds}s` : `${minutes}m`;
+}
+
 function formatEventTime(value: string) {
   return new Intl.DateTimeFormat(undefined, {
     hour: "2-digit",
@@ -394,6 +423,18 @@ function formatGenerationMode(mode: GenerationJobView["mode"]) {
   }
 
   return "Full generation";
+}
+
+function generationHeading(job: GenerationJobView) {
+  if (job.status === "COMPLETED") {
+    return "Generation finished";
+  }
+
+  if (job.status === "FAILED") {
+    return "Generation stopped";
+  }
+
+  return "Generating storefront";
 }
 
 function generationButtonLabel({

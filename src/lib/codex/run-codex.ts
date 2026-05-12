@@ -350,9 +350,6 @@ async function runCodexCli(
   child.stderr?.on("data", (chunk: Buffer) => {
     const text = chunk.toString();
     logs.push(text.trimEnd());
-    if (text.trim()) {
-      onProgress?.(progress("Codex emitted a diagnostic message."));
-    }
   });
 
   const result = await child;
