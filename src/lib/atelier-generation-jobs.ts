@@ -1,8 +1,13 @@
 import { randomUUID } from "node:crypto";
 import {
+  codexRunOptions,
   CODEX_GENERATION_TIMEOUT_SECONDS,
+  type CodexGenerationMode,
+  type CodexProgressEvent,
+  determineGenerationMode,
   generateAffiliateStorefront,
 } from "@/lib/codex/run-codex";
+import { listGeneratedFiles } from "@/lib/generated-storefront";
 import { prisma } from "@/lib/prisma";
 
 export const GENERATION_TIMEOUT_SECONDS = CODEX_GENERATION_TIMEOUT_SECONDS;
@@ -19,6 +24,8 @@ export type GenerationJobSnapshot = {
   elapsedSeconds: number;
   timeoutSeconds: number;
   expectedDuration: string;
+  mode: CodexGenerationMode;
+  progressEvents: CodexProgressEvent[];
   files?: string[];
   logs?: string;
   error?: string;
@@ -41,7 +48,7 @@ function jobStore() {
   return globalThis.__scentforgeGenerationJobs;
 }
 
-export function startGenerationJob({
+export async function startGenerationJob({
   affiliateId,
   slug,
   prompt,
@@ -61,18 +68,27 @@ export function startGenerationJob({
   cleanupOldJobs();
 
   const now = new Date();
+  const existingFiles = await listGeneratedFiles(slug, "draft");
+  const mode = determineGenerationMode(prompt, existingFiles.length > 0);
+  const options = codexRunOptions(mode);
+  const modeMessage = `Using ${mode.replace(/-/g, " ")}. ${options.expectedDuration}.`;
   const job: GenerationJob = {
     id: randomUUID(),
     affiliateId,
     slug,
     prompt,
     status: "RUNNING",
-    message: "Codex CLI is generating the storefront in the background.",
+    message: "Preparing Codex CLI job.",
     startedAt: now.toISOString(),
     completedAt: null,
     elapsedSeconds: 0,
-    timeoutSeconds: GENERATION_TIMEOUT_SECONDS,
-    expectedDuration: GENERATION_EXPECTED_DURATION,
+    timeoutSeconds: options.timeoutMs / 1000,
+    expectedDuration: options.expectedDuration,
+    mode,
+    progressEvents: [
+      { at: now.toISOString(), message: "Preparing Codex CLI job." },
+      { at: now.toISOString(), message: modeMessage },
+    ],
   };
 
   jobStore().set(job.id, job);
@@ -101,7 +117,11 @@ export function getGenerationJob(affiliateId: string, jobId: string) {
 
 async function runGenerationJob(job: GenerationJob) {
   try {
-    const result = await generateAffiliateStorefront({ slug: job.slug, prompt: job.prompt });
+    const result = await generateAffiliateStorefront({
+      slug: job.slug,
+      prompt: job.prompt,
+      onProgress: (event) => addProgress(job, event.message, event.at),
+    });
 
     await prisma.affiliate.update({
       where: { id: job.affiliateId },
@@ -112,11 +132,13 @@ async function runGenerationJob(job: GenerationJob) {
     job.message = "Codex finished the draft. Run validation before publishing.";
     job.files = result.files;
     job.logs = result.logs;
+    addProgress(job, job.message);
   } catch (error) {
     job.status = "FAILED";
     job.message = "Codex generation failed.";
     job.error = error instanceof Error ? error.message : String(error);
     job.logs = job.error;
+    addProgress(job, job.error || job.message);
   } finally {
     job.completedAt = new Date().toISOString();
     job.elapsedSeconds = elapsedSeconds(job.startedAt);
@@ -133,6 +155,8 @@ function toSnapshot(job: GenerationJob): GenerationJobSnapshot {
     elapsedSeconds: job.status === "RUNNING" ? elapsedSeconds(job.startedAt) : job.elapsedSeconds,
     timeoutSeconds: job.timeoutSeconds,
     expectedDuration: job.expectedDuration,
+    mode: job.mode,
+    progressEvents: job.progressEvents,
     files: job.files,
     logs: job.logs,
     error: job.error,
@@ -151,4 +175,13 @@ function cleanupOldJobs() {
       jobStore().delete(id);
     }
   }
+}
+
+function addProgress(job: GenerationJob, message: string, at = new Date().toISOString()) {
+  if (job.progressEvents.at(-1)?.message === message) {
+    return;
+  }
+
+  job.message = message;
+  job.progressEvents = [...job.progressEvents, { at, message }].slice(-12);
 }

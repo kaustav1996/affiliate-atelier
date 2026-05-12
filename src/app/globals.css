@@ -1103,6 +1103,33 @@ textarea:focus-visible {
   transition: width 260ms var(--ease-premium);
 }
 
+.generation-events {
+  display: grid;
+  gap: 6px;
+  max-height: 180px;
+  overflow: auto;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.generation-events li {
+  display: grid;
+  grid-template-columns: 72px minmax(0, 1fr);
+  gap: var(--space-sm);
+  border-radius: 4px;
+  background: color-mix(in oklch, var(--paper) 72%, transparent);
+  padding: 7px 8px;
+  color: color-mix(in oklch, var(--ink) 74%, transparent);
+  font-size: 0.82rem;
+  line-height: 1.4;
+}
+
+.generation-events time {
+  color: color-mix(in oklch, var(--ink) 46%, transparent);
+  font-family: "SFMono-Regular", Consolas, monospace;
+}
+
 .validation-checklist li {
   display: flex;
   align-items: center;

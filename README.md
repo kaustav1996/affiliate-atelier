@@ -60,12 +60,12 @@ The server module `src/lib/codex/run-codex.ts` exposes `generateAffiliateStorefr
 It writes an auditable prompt to `generated/affiliates/[slug]/draft-prompt.md`, then invokes:
 
 ```bash
-codex exec --dangerously-bypass-approvals-and-sandbox -
+codex exec --dangerously-bypass-approvals-and-sandbox --json -
 ```
 
 The prompt is passed on stdin so the non-interactive CLI receives a clean EOF and does not wait for additional input.
 
-The browser does not hold the generation request open for the whole Codex run. `/api/atelier/generate` starts an in-memory background job and returns a job id immediately; the Atelier polls `/api/atelier/generate/[jobId]` for status. Real Codex storefront passes usually take 5-10 minutes, with the server-side Codex process capped at 15 minutes.
+The browser does not hold the generation request open for the whole Codex run. `/api/atelier/generate` starts an in-memory background job and returns a job id immediately; the Atelier polls `/api/atelier/generate/[jobId]` for status and streams JSON progress events into the status panel. Full storefront passes usually take 5-10 minutes. Broad design revisions usually take 3-6 minutes. Surgical follow-up edits are prompted as minimal diffs and capped at 5 minutes.
 
 The prompt instructs Codex to create or edit files only inside:
 
@@ -77,7 +77,7 @@ Generated packages include `Storefront.tsx`, component files, `storefront.css`, 
 
 Generation always invokes the real Codex CLI and writes files under `generated/affiliates/[slug]/draft`. `CODEX_MOCK` is not supported.
 
-Affiliates can apply additional prompt changes to an existing draft. Codex inspects and revises the current draft instead of clearing it first. The generated `manifest.json` also owns success-screen copy, so payment confirmation follows the affiliate storefront aesthetic.
+Affiliates can apply additional prompt changes to an existing draft. Codex inspects and revises the current draft instead of clearing it first. Narrow follow-up prompts use surgical revision instructions that preserve the existing manifest, palette, layout, copy, and component structure unless the user explicitly asks for a redesign. Broader prompts and prompts with URLs can use public network access and browser tooling to inspect visual references, then adapt the design language without copying assets. The first generation run ensures a Playwright MCP server is registered with Codex using `npx -y @playwright/mcp@latest --headless`.
 
 The Atelier also has a reset action that removes draft/published generated artifacts and makes the default platform storefront live again for that affiliate.
 

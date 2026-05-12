@@ -5,19 +5,80 @@ import { ensureDraftDirectory, generatedPaths, listGeneratedFiles } from "@/lib/
 export type GenerateAffiliateStorefrontInput = {
   slug: string;
   prompt: string;
+  onProgress?: CodexProgressHandler;
 };
 
-export type RepairAffiliateStorefrontInput = GenerateAffiliateStorefrontInput & {
+export type RepairAffiliateStorefrontInput = Omit<GenerateAffiliateStorefrontInput, "onProgress"> & {
   validationLogs: string;
+  onProgress?: CodexProgressHandler;
 };
 
-export const CODEX_GENERATION_TIMEOUT_MS = 1000 * 60 * 15;
+export type CodexGenerationMode = "full-generation" | "design-revision" | "surgical-revision";
+
+export type CodexProgressEvent = {
+  at: string;
+  message: string;
+};
+
+export type CodexProgressHandler = (event: CodexProgressEvent) => void;
+
+export type CodexRunOptions = {
+  mode: CodexGenerationMode;
+  timeoutMs: number;
+  expectedDuration: string;
+};
+
+export const CODEX_FULL_GENERATION_TIMEOUT_MS = 1000 * 60 * 15;
+export const CODEX_SURGICAL_REVISION_TIMEOUT_MS = 1000 * 60 * 5;
+export const CODEX_GENERATION_TIMEOUT_MS = CODEX_FULL_GENERATION_TIMEOUT_MS;
 export const CODEX_GENERATION_TIMEOUT_SECONDS = CODEX_GENERATION_TIMEOUT_MS / 1000;
 
-export function buildCodexPrompt({ slug, prompt }: GenerateAffiliateStorefrontInput) {
+const FULL_GENERATION_EXPECTED_DURATION = "Usually 5-10 minutes";
+const DESIGN_REVISION_EXPECTED_DURATION = "Usually 3-6 minutes";
+const SURGICAL_REVISION_EXPECTED_DURATION = "Usually 1-3 minutes";
+const REFERENCE_URL_PATTERN = /https?:\/\/\S+/i;
+const BROAD_REVISION_PATTERN =
+  /\b(redesign|re-design|rebuild|full|entire|whole|branding|brand|theme|style|aesthetic|inspired by|go along with|make everything|change design|cyberpunk|luxury|minimal)\b/i;
+
+export function determineGenerationMode(prompt: string, hasExistingDraft: boolean): CodexGenerationMode {
+  if (!hasExistingDraft) {
+    return "full-generation";
+  }
+
+  return BROAD_REVISION_PATTERN.test(prompt) || REFERENCE_URL_PATTERN.test(prompt) ? "design-revision" : "surgical-revision";
+}
+
+export function codexRunOptions(mode: CodexGenerationMode): CodexRunOptions {
+  if (mode === "surgical-revision") {
+    return {
+      mode,
+      timeoutMs: CODEX_SURGICAL_REVISION_TIMEOUT_MS,
+      expectedDuration: SURGICAL_REVISION_EXPECTED_DURATION,
+    };
+  }
+
+  return {
+    mode,
+    timeoutMs: CODEX_FULL_GENERATION_TIMEOUT_MS,
+    expectedDuration: mode === "design-revision" ? DESIGN_REVISION_EXPECTED_DURATION : FULL_GENERATION_EXPECTED_DURATION,
+  };
+}
+
+export function buildCodexPrompt({
+  slug,
+  prompt,
+  mode = "full-generation",
+}: {
+  slug: string;
+  prompt: string;
+  mode?: CodexGenerationMode;
+}) {
+  const localPreviewUrl = `${process.env.BASE_URL || "http://localhost:3002"}/a/${slug}/preview`;
+  const isSurgical = mode === "surgical-revision";
+
   return `You are Codex running inside ScentForge Atelier.
 
-Generate or revise a custom affiliate perfume storefront.
+${isSurgical ? "Apply a narrow follow-up edit to an existing custom affiliate perfume storefront." : "Generate or revise a custom affiliate perfume storefront."}
 
 Affiliate slug:
 ${slug}
@@ -25,10 +86,27 @@ ${slug}
 Affiliate request, including any new changes they want:
 ${prompt}
 
+Revision mode:
+${mode}
+
 Only create or edit files inside:
 generated/affiliates/${slug}/draft
 
 If files already exist in that draft directory, inspect them first and revise the current draft according to the affiliate request. Do not discard working checkout/cart/test ids unless the affiliate explicitly asks for a full rebuild.
+
+${isSurgical
+    ? `Surgical revision rules:
+- Change only the files and CSS selectors needed for the affiliate's exact request.
+- Preserve the existing manifest title, brandDirection, palette, hero, subcopy, badge, success copy, layout, product cards, cart behavior, checkout wiring, and overall visual direction unless the request explicitly names one of those things.
+- Do not reinterpret the storefront aesthetic. Do not redesign the page. Do not adjust unrelated copy, colors, spacing, animations, or component structure.
+- Prefer a minimal diff. If the request can be fixed with one CSS rule, make one CSS rule.
+- Do not run long optional browser or unit test suites for simple CSS/markup fixes. Do the smallest useful verification, then exit immediately with a short summary.`
+    : `Design/reference rules:
+- When the affiliate gives an http or https reference URL, use browser access to open it, inspect the visual language, and capture a screenshot or visual notes before editing.
+- You may use network access, HTTP fetches, and browser tools for public design references and local preview URLs.
+- Local preview URL for this draft: ${localPreviewUrl}
+- Do not copy copyrighted assets, logos, or exact text from reference sites. Adapt the design language instead.
+- Do not call external commerce, payment, account, or write APIs. Do not submit forms or make purchases on external sites.`}
 
 Create:
 - index.ts
@@ -61,18 +139,19 @@ Do not modify auth.
 Do not modify routes outside generated folder.
 Do not directly create orders.
 Do not bypass checkout.
-Do not call external network APIs.
 Use the props and callbacks provided by the platform.
 Include required data-testid attributes:
 storefront-root, product-card, add-to-cart-button, cart-button, cart-drawer, checkout-button, checkout-email, checkout-address, pay-button, success-message.
 
-Make it visually distinctive, production-quality, and aligned with the user's requested aesthetic.
+${isSurgical
+    ? "Keep the existing generated design intact and aligned with the already-published draft."
+    : "Make it visually distinctive, production-quality, and aligned with the user's requested aesthetic."}
 
-After writing files, briefly summarize what you created.`;
+After writing files, briefly summarize what you changed and exit.`;
 }
 
 export function codexExecArgs() {
-  return ["exec", "--dangerously-bypass-approvals-and-sandbox", "-"];
+  return ["exec", "--dangerously-bypass-approvals-and-sandbox", "--json", "-"];
 }
 
 function isMissingCodexExecutable(error: unknown) {
@@ -85,37 +164,33 @@ function isMissingCodexExecutable(error: unknown) {
 export async function generateAffiliateStorefront(input: GenerateAffiliateStorefrontInput) {
   await ensureDraftDirectory(input.slug);
 
-  const codexPrompt = buildCodexPrompt(input);
+  const existingFiles = await listGeneratedFiles(input.slug, "draft");
+  const mode = determineGenerationMode(input.prompt, existingFiles.length > 0);
+  const options = codexRunOptions(mode);
+  const codexPrompt = buildCodexPrompt({ slug: input.slug, prompt: input.prompt, mode });
   const { promptPath } = generatedPaths(input.slug);
   await fs.writeFile(promptPath, codexPrompt, "utf8");
 
   try {
-    const result = await execa(
-      "codex",
-      codexExecArgs(),
-      {
-        cwd: process.cwd(),
-        env: process.env,
-        input: codexPrompt,
-        timeout: CODEX_GENERATION_TIMEOUT_MS,
-        reject: false,
-      },
-    );
+    input.onProgress?.(progress(`Using ${formatMode(mode)}. ${options.expectedDuration}.`));
+    await ensurePlaywrightMcp(input.onProgress);
+    const result = await runCodexCli(codexPrompt, options, input.onProgress);
 
     const files = await listGeneratedFiles(input.slug, "draft");
-    const logs = [result.stdout, result.stderr].filter(Boolean).join("\n\n");
 
     if (result.timedOut) {
-      throw new Error("Codex generation exceeded the 15-minute limit. Try a narrower prompt or run generation again.");
+      throw new Error(`Codex ${formatMode(mode)} exceeded the ${Math.round(options.timeoutMs / 60000)}-minute limit. Try a narrower prompt or run generation again.`);
     }
 
     if (result.exitCode !== 0) {
-      throw new Error(logs || `Codex exited with code ${result.exitCode}.`);
+      throw new Error(result.logs || `Codex exited with code ${result.exitCode}.`);
     }
 
     return {
       files,
-      logs: logs || "Codex completed without console output.",
+      logs: result.logs || "Codex completed without console output.",
+      mode,
+      expectedDuration: options.expectedDuration,
     };
   } catch (error) {
     if (isMissingCodexExecutable(error)) {
@@ -152,7 +227,7 @@ Do not modify auth.
 Do not modify routes outside generated folder.
 Do not directly create orders.
 Do not bypass checkout.
-Do not call external network APIs.
+You may use browser, network, and local preview access to diagnose the validation failure, but do not call external commerce, payment, account, or write APIs.
 
 Preserve the generated storefront contract from src/lib/storefront-contract.ts.
 Preserve or repair the manifest.json success object so the checkout success screen stays aligned with the generated storefront's aesthetic.
@@ -169,31 +244,30 @@ export async function repairAffiliateStorefront(input: RepairAffiliateStorefront
   const codexPrompt = buildCodexRepairPrompt(input);
 
   try {
-    const result = await execa(
-      "codex",
-      codexExecArgs(),
+    input.onProgress?.(progress("Starting Codex auto-repair with validation logs."));
+    await ensurePlaywrightMcp(input.onProgress);
+    const result = await runCodexCli(
+      codexPrompt,
       {
-        cwd: process.cwd(),
-        env: process.env,
-        input: codexPrompt,
-        timeout: CODEX_GENERATION_TIMEOUT_MS,
-        reject: false,
+        mode: "surgical-revision",
+        timeoutMs: CODEX_SURGICAL_REVISION_TIMEOUT_MS,
+        expectedDuration: SURGICAL_REVISION_EXPECTED_DURATION,
       },
+      input.onProgress,
     );
     const files = await listGeneratedFiles(input.slug, "draft");
-    const logs = [result.stdout, result.stderr].filter(Boolean).join("\n\n");
 
     if (result.timedOut) {
-      throw new Error("Codex repair exceeded the 15-minute limit. Review the validation logs and try a narrower repair prompt.");
+      throw new Error("Codex repair exceeded the 5-minute limit. Review the validation logs and try a narrower repair prompt.");
     }
 
     if (result.exitCode !== 0) {
-      throw new Error(logs || `Codex repair exited with code ${result.exitCode}.`);
+      throw new Error(result.logs || `Codex repair exited with code ${result.exitCode}.`);
     }
 
     return {
       files,
-      logs: logs || "Codex repair completed without console output.",
+      logs: result.logs || "Codex repair completed without console output.",
     };
   } catch (error) {
     if (isMissingCodexExecutable(error)) {
@@ -202,4 +276,195 @@ export async function repairAffiliateStorefront(input: RepairAffiliateStorefront
 
     throw error;
   }
+}
+
+async function ensurePlaywrightMcp(onProgress?: CodexProgressHandler) {
+  onProgress?.(progress("Checking Codex browser MCP access."));
+
+  const list = await execa("codex", ["mcp", "list"], {
+    cwd: process.cwd(),
+    env: process.env,
+    reject: false,
+    timeout: 30_000,
+  });
+  const mcpList = [list.stdout, list.stderr].filter(Boolean).join("\n");
+
+  if (list.exitCode !== 0) {
+    throw new Error(mcpList || "Could not inspect Codex MCP servers.");
+  }
+
+  if (/^playwright\s+/m.test(list.stdout)) {
+    onProgress?.(progress("Playwright MCP is available for browser screenshots."));
+    return;
+  }
+
+  onProgress?.(progress("Installing Playwright MCP for future Codex browser access."));
+  const add = await execa(
+    "codex",
+    ["mcp", "add", "playwright", "--", "npx", "-y", "@playwright/mcp@latest", "--headless"],
+    {
+      cwd: process.cwd(),
+      env: process.env,
+      reject: false,
+      timeout: 120_000,
+    },
+  );
+  const addLogs = [add.stdout, add.stderr].filter(Boolean).join("\n");
+
+  if (add.exitCode !== 0) {
+    throw new Error(addLogs || "Could not install Playwright MCP for Codex.");
+  }
+
+  onProgress?.(progress("Playwright MCP installed; Codex can inspect reference URLs."));
+}
+
+async function runCodexCli(
+  prompt: string,
+  options: CodexRunOptions,
+  onProgress?: CodexProgressHandler,
+) {
+  onProgress?.(progress("Launching Codex CLI."));
+  const child = execa("codex", codexExecArgs(), {
+    cwd: process.cwd(),
+    env: process.env,
+    input: prompt,
+    timeout: options.timeoutMs,
+    reject: false,
+  });
+  const logs: string[] = [];
+
+  child.stdout?.on("data", (chunk: Buffer) => {
+    for (const line of chunk.toString().split(/\r?\n/)) {
+      if (!line.trim()) {
+        continue;
+      }
+      const parsed = parseCodexJsonLine(line);
+      logs.push(parsed.logLine);
+
+      if (parsed.progressMessage) {
+        onProgress?.(progress(parsed.progressMessage));
+      }
+    }
+  });
+
+  child.stderr?.on("data", (chunk: Buffer) => {
+    const text = chunk.toString();
+    logs.push(text.trimEnd());
+    if (text.trim()) {
+      onProgress?.(progress("Codex emitted a diagnostic message."));
+    }
+  });
+
+  const result = await child;
+
+  return {
+    exitCode: result.exitCode,
+    timedOut: result.timedOut,
+    logs: logs.filter(Boolean).join("\n"),
+  };
+}
+
+function parseCodexJsonLine(line: string) {
+  try {
+    const event = JSON.parse(line) as unknown;
+    const progressMessage = progressMessageForCodexEvent(event);
+    return {
+      logLine: humanizeCodexEvent(event),
+      progressMessage,
+    };
+  } catch {
+    return {
+      logLine: line,
+      progressMessage: line.length < 160 ? line : undefined,
+    };
+  }
+}
+
+function progressMessageForCodexEvent(event: unknown) {
+  if (!event || typeof event !== "object") {
+    return undefined;
+  }
+
+  const type = "type" in event ? String(event.type) : "";
+  const payload = "payload" in event && event.payload && typeof event.payload === "object" ? event.payload as Record<string, unknown> : null;
+  const payloadType = payload && "type" in payload ? String(payload.type) : "";
+
+  if (type === "response_item" && payloadType === "function_call") {
+    const name = payload && "name" in payload ? String(payload.name) : "a tool";
+    return `Codex is using ${name}.`;
+  }
+
+  if (type === "response_item" && payloadType === "function_call_output") {
+    return "Codex finished a tool call.";
+  }
+
+  if (type === "turn_started") {
+    return "Codex is planning the edit.";
+  }
+
+  if (type === "turn_completed") {
+    return "Codex is finishing up.";
+  }
+
+  if (type === "error") {
+    return "Codex reported an error.";
+  }
+
+  return undefined;
+}
+
+function humanizeCodexEvent(event: unknown) {
+  if (!event || typeof event !== "object") {
+    return String(event);
+  }
+
+  const type = "type" in event ? String(event.type) : "event";
+  const payload = "payload" in event && event.payload && typeof event.payload === "object" ? event.payload as Record<string, unknown> : null;
+  const payloadType = payload && "type" in payload ? String(payload.type) : "";
+
+  if (type === "response_item" && payloadType === "message" && payload && "content" in payload) {
+    return extractText(payload.content) || `${type}: ${payloadType}`;
+  }
+
+  if (type === "response_item" && payloadType === "function_call") {
+    const name = payload && "name" in payload ? String(payload.name) : "tool";
+    return `tool_call: ${name}`;
+  }
+
+  if (type === "response_item" && payloadType === "function_call_output") {
+    return "tool_output";
+  }
+
+  if ("message" in event && typeof event.message === "string") {
+    return event.message;
+  }
+
+  return payloadType ? `${type}: ${payloadType}` : type;
+}
+
+function extractText(value: unknown): string {
+  if (typeof value === "string") {
+    return value;
+  }
+
+  if (Array.isArray(value)) {
+    return value.map(extractText).filter(Boolean).join("\n");
+  }
+
+  if (value && typeof value === "object" && "text" in value && typeof value.text === "string") {
+    return value.text;
+  }
+
+  return "";
+}
+
+function progress(message: string): CodexProgressEvent {
+  return {
+    at: new Date().toISOString(),
+    message,
+  };
+}
+
+function formatMode(mode: CodexGenerationMode) {
+  return mode.replace(/-/g, " ");
 }

@@ -54,7 +54,7 @@ export async function listGeneratedFiles(slug: string, state: "draft" | "publish
     try {
       const entries = await fs.readdir(current, { withFileTypes: true });
       const files = await Promise.all(
-        entries.map((entry) => {
+        entries.filter((entry) => !shouldIgnoreGeneratedEntry(path.join(prefix, entry.name))).map((entry) => {
           const nextPrefix = path.join(prefix, entry.name);
           const nextPath = path.join(current, entry.name);
           return entry.isDirectory() ? walk(nextPath, nextPrefix) : Promise.resolve([nextPrefix]);
@@ -67,6 +67,12 @@ export async function listGeneratedFiles(slug: string, state: "draft" | "publish
   }
 
   return walk(directory);
+}
+
+function shouldIgnoreGeneratedEntry(relativePath: string) {
+  return relativePath === ".DS_Store"
+    || relativePath.startsWith(`node_modules${path.sep}`)
+    || relativePath.includes(`${path.sep}.vite${path.sep}`);
 }
 
 export async function readGeneratedManifest(slug: string, state: "draft" | "published") {

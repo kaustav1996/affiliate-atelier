@@ -27,6 +27,8 @@ type GenerationJobView = {
   elapsedSeconds: number;
   timeoutSeconds: number;
   expectedDuration: string;
+  mode: "full-generation" | "design-revision" | "surgical-revision";
+  progressEvents: { at: string; message: string }[];
   files?: string[];
   logs?: string;
   error?: string;
@@ -176,7 +178,7 @@ export function AtelierClient({ slug, initialPrompt, initialFiles, validationRun
 
         setGenerationJob(payload.job);
         setElapsedSeconds(payload.job.elapsedSeconds);
-        setLogs("Codex CLI job started. Live status will update here when generation completes.");
+        setLogs("Codex CLI job started. Live status will update here as progress events arrive.");
         setMessage(payload.job.message);
       } catch (error) {
         setMessage(error instanceof Error ? error.message : "Generation failed to start.");
@@ -286,7 +288,8 @@ export function AtelierClient({ slug, initialPrompt, initialFiles, validationRun
                     : "Generation stopped."}
               </strong>
               <span>
-                Elapsed {formatDuration(visibleElapsedSeconds)} · {generationJob.expectedDuration} · hard limit{" "}
+                {formatGenerationMode(generationJob.mode)} · elapsed {formatDuration(visibleElapsedSeconds)} ·{" "}
+                {generationJob.expectedDuration} · hard limit{" "}
                 {formatDuration(generationJob.timeoutSeconds)}
               </span>
             </div>
@@ -296,6 +299,16 @@ export function AtelierClient({ slug, initialPrompt, initialFiles, validationRun
             <p>
               The browser is polling a short status endpoint, so the tab should not time out while Codex writes files.
             </p>
+            {generationJob.progressEvents?.length ? (
+              <ol className="generation-events" aria-label="Codex progress events">
+                {generationJob.progressEvents.map((event) => (
+                  <li key={`${event.at}-${event.message}`}>
+                    <time>{formatEventTime(event.at)}</time>
+                    <span>{event.message}</span>
+                  </li>
+                ))}
+              </ol>
+            ) : null}
             {generationJob.error ? <p className="form-error">{generationJob.error}</p> : null}
           </div>
         ) : null}
@@ -361,6 +374,26 @@ function formatDuration(totalSeconds: number) {
   const seconds = totalSeconds % 60;
 
   return `${minutes}:${String(seconds).padStart(2, "0")}`;
+}
+
+function formatEventTime(value: string) {
+  return new Intl.DateTimeFormat(undefined, {
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  }).format(new Date(value));
+}
+
+function formatGenerationMode(mode: GenerationJobView["mode"]) {
+  if (mode === "surgical-revision") {
+    return "Surgical edit";
+  }
+
+  if (mode === "design-revision") {
+    return "Design revision";
+  }
+
+  return "Full generation";
 }
 
 function generationButtonLabel({
