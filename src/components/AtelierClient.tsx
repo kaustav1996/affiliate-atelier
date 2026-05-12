@@ -247,8 +247,13 @@ export function AtelierClient({ slug, initialPrompt, initialFiles, validationRun
   return (
     <div className="atelier-grid">
       <section className="atelier-panel prompt-panel">
-        <p className="eyebrow">Prompt panel</p>
-        <h2>Describe your storefront</h2>
+        <div className="atelier-step">
+          <span>01</span>
+          <div>
+            <p className="eyebrow">Prompt panel</p>
+            <h2>Describe your storefront</h2>
+          </div>
+        </div>
         <textarea value={prompt} onChange={(event) => setPrompt(event.target.value)} />
         <div className="example-prompts">
           {examples.map((example) => (
@@ -263,8 +268,13 @@ export function AtelierClient({ slug, initialPrompt, initialFiles, validationRun
       </section>
 
       <section className="atelier-panel status-panel">
-        <p className="eyebrow">Generation status</p>
-        <h2>{message || (files.length ? "Generated files" : "Idle")}</h2>
+        <div className="atelier-step">
+          <span>02</span>
+          <div>
+            <p className="eyebrow">Generation status</p>
+            <h2>{message || (files.length ? "Generated files" : "Idle")}</h2>
+          </div>
+        </div>
         {generationJob ? (
           <div className={`generation-job ${generationJob.status.toLowerCase()}`}>
             <div className="generation-job-copy">
@@ -312,7 +322,7 @@ export function AtelierClient({ slug, initialPrompt, initialFiles, validationRun
       <section className="atelier-panel preview-panel">
         <div className="panel-heading-row">
           <div>
-            <p className="eyebrow">Preview panel</p>
+            <p className="eyebrow">03 Preview panel</p>
             <h2>/a/{slug}/preview</h2>
           </div>
           <a href={`/a/${slug}/preview`} target="_blank">
@@ -323,7 +333,7 @@ export function AtelierClient({ slug, initialPrompt, initialFiles, validationRun
       </section>
 
       <section className="atelier-panel console-panel">
-        <p className="eyebrow">Validation console</p>
+        <p className="eyebrow">04 Validation console</p>
         <h2>{passed ? "Generated storefront passed validation" : "Publish disabled until validation passes"}</h2>
         <ul className="validation-checklist">
           {checklist.map(([label, done]) => (

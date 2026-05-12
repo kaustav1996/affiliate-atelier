@@ -55,6 +55,8 @@ export function CommerceExperience({
     () => cartItems.reduce((sum, item) => sum + item.product.priceInCents * item.quantity, 0),
     [cartItems],
   );
+  const cartCount = cartItems.reduce((sum, item) => sum + item.quantity, 0);
+  const heroProduct = products[0];
 
   function addToCart(productId: string) {
     const product = products.find((item) => item.id === productId);
@@ -157,19 +159,49 @@ export function CommerceExperience({
             <Link href="/login">Affiliate login</Link>
           )}
           <button className="cart-trigger" data-testid="cart-button" onClick={() => setCartOpen(true)}>
-            Cart <span>{cartItems.reduce((sum, item) => sum + item.quantity, 0)}</span>
+            Cart <span>{cartCount}</span>
           </button>
         </div>
       </nav>
 
       <section className="store-hero">
-        <div>
+        <div className="hero-editorial">
           <p className="eyebrow">{tone.eyebrow}</p>
           <h1>{tone.hero}</h1>
+          <p className="store-hero-lede">{tone.subcopy}</p>
+          <div className="hero-proof-row" aria-label="Storefront proof points">
+            <span>Codex generated</span>
+            <span>Checkout validated</span>
+            <span>Live metrics isolated</span>
+          </div>
         </div>
-        <div className="hero-copy-block">
-          <span>{tone.badge}</span>
-          <p>{tone.subcopy}</p>
+
+        <div className="hero-bottle-stage" aria-label="Featured fragrance">
+          <div className="stage-metadata">
+            <span>{tone.badge}</span>
+            <span>{affiliateSlug ? `/a/${affiliateSlug}` : "House storefront"}</span>
+          </div>
+          <div
+            className={`hero-bottle-visual ${heroProduct?.imageUrl ? "has-photo" : ""} bottle-${heroProduct?.gradient || "amber"}`}
+            aria-hidden="true"
+          >
+            {heroProduct?.imageUrl ? (
+              <Image
+                className="product-photo"
+                src={heroProduct.imageUrl}
+                alt=""
+                fill
+                sizes="(max-width: 900px) 92vw, 360px"
+                priority
+              />
+            ) : (
+              <span>01</span>
+            )}
+          </div>
+          <div className="stage-caption">
+            <span>{heroProduct ? heroProduct.scentFamily : "Fragrance edit"}</span>
+            <strong>{heroProduct ? heroProduct.name : "ScentForge house edit"}</strong>
+          </div>
           {affiliateSlug ? <Link href={`/a/${affiliateSlug}`}>Affiliate link: /a/{affiliateSlug}</Link> : null}
         </div>
       </section>
