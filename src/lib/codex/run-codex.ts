@@ -123,6 +123,7 @@ Create:
 
 Follow the storefront contract from src/lib/storefront-contract.ts.
 Products are database records. Use product.name, product.description, product.priceInCents, product.scentFamily, product.imageUrl, and product.commissionRate from props rather than hard-coded product mocks.
+Important runtime boundary: the live preview and published storefront render through the platform commerce shell in src/components/CommerceExperience.tsx. The generated React/CSS files are artifact boundaries and tests; manifest.json is the main generated input the runtime consumes. Cart, checkout, payment, and attribution behavior are platform-owned. Do not assume edits to generated CheckoutExperience.tsx or generated checkout CSS will change the visible platform checkout drawer.
 The runtime reads manifest.json for generated brand direction. Include a "success" object in manifest.json with:
 - eyebrow
 - title
@@ -230,6 +231,7 @@ Do not bypass checkout.
 You may use browser, network, and local preview access to diagnose the validation failure, but do not call external commerce, payment, account, or write APIs.
 
 Preserve the generated storefront contract from src/lib/storefront-contract.ts.
+Remember that the visible preview renders through the platform commerce shell and consumes manifest.json for generated brand direction. Generated component files are artifacts and tests, so repair manifest-driven output and generated contract files only.
 Preserve or repair the manifest.json success object so the checkout success screen stays aligned with the generated storefront's aesthetic.
 Preserve or repair any manifest.json "effects" array that represents requested visible environmental effects.
 Ensure these exact data-testid attributes are present and wired to the provided callbacks:

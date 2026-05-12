@@ -672,9 +672,24 @@ textarea:focus-visible {
 
 .checkout-stage input,
 .checkout-stage textarea {
-  border-color: var(--store-line);
-  background: color-mix(in oklch, var(--store-ink) 94%, var(--store-accent));
-  color: var(--ink);
+  color-scheme: light;
+  border-color: oklch(82% 0.018 84);
+  background: oklch(98% 0.012 86);
+  color: oklch(16% 0.014 88);
+  -webkit-text-fill-color: oklch(16% 0.014 88);
+  caret-color: var(--store-accent);
+  box-shadow: inset 0 1px 0 oklch(100% 0 0 / 72%);
+}
+
+.checkout-stage input::placeholder,
+.checkout-stage textarea::placeholder {
+  color: color-mix(in oklch, var(--ink) 48%, transparent);
+}
+
+.checkout-stage input:-webkit-autofill,
+.checkout-stage textarea:-webkit-autofill {
+  box-shadow: 0 0 0 1000px oklch(98% 0.012 86) inset;
+  -webkit-text-fill-color: oklch(16% 0.014 88);
 }
 
 .form-error {

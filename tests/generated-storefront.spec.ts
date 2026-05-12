@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { expectReadableCheckoutField } from "./checkout-contrast";
 
 test("generated storefront validation purchase flow keeps live metrics isolated", async ({ page, request }) => {
   const slug = process.env.AFFILIATE_SLUG || "demo";
@@ -19,6 +20,8 @@ test("generated storefront validation purchase flow keeps live metrics isolated"
   await page.getByTestId("cart-button").click();
   await expect(page.getByTestId("cart-drawer")).toBeVisible();
   await page.getByTestId("checkout-button").click();
+  await expectReadableCheckoutField(page.getByTestId("checkout-email"));
+  await expectReadableCheckoutField(page.getByTestId("checkout-address"));
   await page.getByTestId("checkout-email").fill("validation-buyer@scentforge.test");
   await page.getByTestId("checkout-address").fill("88 Validation Road, Mumbai 400001");
   await page.getByTestId("pay-button").click();

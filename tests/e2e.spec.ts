@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { expectReadableCheckoutField } from "./checkout-contrast";
 
 test("public checkout flow reaches payment success", async ({ page }) => {
   await page.goto("/");
@@ -9,6 +10,8 @@ test("public checkout flow reaches payment success", async ({ page }) => {
   await page.getByLabel("Checkout").getByRole("button", { name: "Close" }).click();
   await expect(page.getByTestId("checkout-email")).toBeHidden();
   await page.getByTestId("checkout-button").click();
+  await expectReadableCheckoutField(page.getByTestId("checkout-email"));
+  await expectReadableCheckoutField(page.getByTestId("checkout-address"));
   await page.getByTestId("checkout-email").fill("buyer@scentforge.test");
   await page.getByTestId("checkout-address").fill("21 Customer Lane, Mumbai");
   await page.getByTestId("pay-button").click();

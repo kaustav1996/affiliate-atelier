@@ -72,6 +72,7 @@ describe("ScentForge business rules", () => {
     expect(prompt).toContain("Surgical revision rules");
     expect(prompt).toContain("Preserve the existing manifest title");
     expect(prompt).toContain("Do not reinterpret the storefront aesthetic");
+    expect(prompt).toContain("Do not assume edits to generated CheckoutExperience.tsx");
     expect(prompt).toContain("exit immediately with a short summary");
   });
 
