@@ -1142,13 +1142,14 @@ textarea:focus-visible {
 }
 
 .generation-recency {
-  display: flex;
+  display: inline-flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: 8px 10px;
+  justify-self: start;
+  gap: 8px;
   border-radius: 6px;
   background: color-mix(in oklch, var(--paper) 66%, transparent);
-  padding: 10px 12px;
+  padding: 9px 12px;
   color: color-mix(in oklch, var(--ink) 66%, transparent);
   font-size: 0.86rem;
 }
@@ -1163,7 +1164,14 @@ textarea:focus-visible {
   color: var(--ink);
 }
 
+.generation-recency-suffix {
+  color: color-mix(in oklch, var(--ink) 58%, transparent);
+  font-weight: 600;
+  text-transform: none;
+}
+
 .generation-recency em {
+  flex-basis: 100%;
   color: color-mix(in oklch, var(--ink) 62%, transparent);
   font-style: normal;
 }

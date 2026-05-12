@@ -38,6 +38,7 @@ type GenerationJob = GenerationJobSnapshot & {
 };
 
 const JOB_RETENTION_MS = 1000 * 60 * 30;
+const HEARTBEAT_INTERVAL_MS = 1000 * 30;
 
 declare global {
   var __scentforgeGenerationJobs: Map<string, GenerationJob> | undefined;
@@ -116,6 +117,8 @@ export function getGenerationJob(affiliateId: string, jobId: string) {
 }
 
 async function runGenerationJob(job: GenerationJob) {
+  const heartbeat = startHeartbeat(job);
+
   try {
     const result = await generateAffiliateStorefront({
       slug: job.slug,
@@ -140,6 +143,7 @@ async function runGenerationJob(job: GenerationJob) {
     job.logs = job.error;
     addProgress(job, job.error || job.message);
   } finally {
+    clearInterval(heartbeat);
     job.completedAt = new Date().toISOString();
     job.elapsedSeconds = elapsedSeconds(job.startedAt);
   }
@@ -184,4 +188,40 @@ function addProgress(job: GenerationJob, message: string, at = new Date().toISOS
 
   job.message = message;
   job.progressEvents = [...job.progressEvents, { at, message }].slice(-12);
+}
+
+function startHeartbeat(job: GenerationJob) {
+  return setInterval(() => {
+    if (job.status !== "RUNNING") {
+      return;
+    }
+
+    const latest = job.progressEvents.at(-1);
+    const silenceSeconds = latest ? elapsedSeconds(latest.at) : elapsedSeconds(job.startedAt);
+
+    if (silenceSeconds < 30) {
+      return;
+    }
+
+    addProgress(job, heartbeatMessage(job, silenceSeconds));
+  }, HEARTBEAT_INTERVAL_MS);
+}
+
+function heartbeatMessage(job: GenerationJob, silenceSeconds: number) {
+  if (job.mode === "surgical-revision") {
+    return `Still waiting on Codex CLI. No new output for ${formatShortDuration(silenceSeconds)}.`;
+  }
+
+  return `Still running. Codex may be browsing, editing, or verifying. No new output for ${formatShortDuration(silenceSeconds)}.`;
+}
+
+function formatShortDuration(totalSeconds: number) {
+  if (totalSeconds < 60) {
+    return `${totalSeconds}s`;
+  }
+
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+
+  return seconds ? `${minutes}m ${seconds}s` : `${minutes}m`;
 }
