@@ -75,7 +75,6 @@ export default async function DashboardPage() {
               <p className="eyebrow">Commission trend</p>
               <h2>Last 14 days</h2>
             </div>
-            <span>{formatPercent(metrics.conversionRate || 0)} conversion signal</span>
           </div>
           <DashboardChart trend={metrics.trend} />
         </article>
