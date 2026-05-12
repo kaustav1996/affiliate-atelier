@@ -5,10 +5,16 @@ test("public checkout flow reaches payment success", async ({ page }) => {
   await expect(page.getByTestId("storefront-root")).toBeVisible();
   await page.getByTestId("add-to-cart-button").first().click();
   await page.getByTestId("checkout-button").click();
+  await expect(page.getByText("4242 4242 4242 4242")).toBeVisible();
+  await page.getByLabel("Checkout").getByRole("button", { name: "Close" }).click();
+  await expect(page.getByTestId("checkout-email")).toBeHidden();
+  await page.getByTestId("checkout-button").click();
   await page.getByTestId("checkout-email").fill("buyer@scentforge.test");
   await page.getByTestId("checkout-address").fill("21 Customer Lane, Mumbai");
   await page.getByTestId("pay-button").click();
   await expect(page.getByTestId("success-message")).toBeVisible();
+  await page.getByRole("button", { name: "Continue shopping" }).click();
+  await expect(page.getByTestId("cart-button")).toContainText("0");
 });
 
 test("affiliate live commission flow updates dashboard", async ({ page }) => {

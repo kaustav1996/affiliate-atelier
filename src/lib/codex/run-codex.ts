@@ -11,6 +11,9 @@ export type RepairAffiliateStorefrontInput = GenerateAffiliateStorefrontInput & 
   validationLogs: string;
 };
 
+export const CODEX_GENERATION_TIMEOUT_MS = 1000 * 60 * 15;
+export const CODEX_GENERATION_TIMEOUT_SECONDS = CODEX_GENERATION_TIMEOUT_MS / 1000;
+
 export function buildCodexPrompt({ slug, prompt }: GenerateAffiliateStorefrontInput) {
   return `You are Codex running inside ScentForge Atelier.
 
@@ -49,6 +52,7 @@ The runtime reads manifest.json for generated brand direction. Include a "succes
 - affiliateAttribution
 - continueLabel
 Use {orderId}, {kind}, {affiliateSlug}, and {commission} placeholders where useful. The checkout success screen must feel like the generated affiliate storefront, not the platform default.
+If the affiliate asks for visible environmental effects such as bubbles, fog, sparks, rain, smoke, or light trails, include an "effects" array in manifest.json with stable lower-case labels such as "floating-bubbles".
 
 Do not modify package.json.
 Do not install dependencies.
@@ -67,6 +71,17 @@ Make it visually distinctive, production-quality, and aligned with the user's re
 After writing files, briefly summarize what you created.`;
 }
 
+export function codexExecArgs() {
+  return ["exec", "--dangerously-bypass-approvals-and-sandbox", "-"];
+}
+
+function isMissingCodexExecutable(error: unknown) {
+  return typeof error === "object"
+    && error !== null
+    && "code" in error
+    && (error as { code?: string }).code === "ENOENT";
+}
+
 export async function generateAffiliateStorefront(input: GenerateAffiliateStorefrontInput) {
   await ensureDraftDirectory(input.slug);
 
@@ -77,17 +92,22 @@ export async function generateAffiliateStorefront(input: GenerateAffiliateStoref
   try {
     const result = await execa(
       "codex",
-      ["exec", "--sandbox", "workspace-write", "--ask-for-approval", "never", codexPrompt],
+      codexExecArgs(),
       {
         cwd: process.cwd(),
         env: process.env,
-        timeout: 1000 * 60 * 8,
+        input: codexPrompt,
+        timeout: CODEX_GENERATION_TIMEOUT_MS,
         reject: false,
       },
     );
 
     const files = await listGeneratedFiles(input.slug, "draft");
     const logs = [result.stdout, result.stderr].filter(Boolean).join("\n\n");
+
+    if (result.timedOut) {
+      throw new Error("Codex generation exceeded the 15-minute limit. Try a narrower prompt or run generation again.");
+    }
 
     if (result.exitCode !== 0) {
       throw new Error(logs || `Codex exited with code ${result.exitCode}.`);
@@ -98,9 +118,7 @@ export async function generateAffiliateStorefront(input: GenerateAffiliateStoref
       logs: logs || "Codex completed without console output.",
     };
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-
-    if (message.includes("ENOENT") || message.includes("not found")) {
+    if (isMissingCodexExecutable(error)) {
       throw new Error("Codex CLI was not found. Install and authenticate Codex CLI, then retry.");
     }
 
@@ -138,6 +156,7 @@ Do not call external network APIs.
 
 Preserve the generated storefront contract from src/lib/storefront-contract.ts.
 Preserve or repair the manifest.json success object so the checkout success screen stays aligned with the generated storefront's aesthetic.
+Preserve or repair any manifest.json "effects" array that represents requested visible environmental effects.
 Ensure these exact data-testid attributes are present and wired to the provided callbacks:
 storefront-root, product-card, add-to-cart-button, cart-button, cart-drawer, checkout-button, checkout-email, checkout-address, pay-button, success-message.
 
@@ -152,16 +171,21 @@ export async function repairAffiliateStorefront(input: RepairAffiliateStorefront
   try {
     const result = await execa(
       "codex",
-      ["exec", "--sandbox", "workspace-write", "--ask-for-approval", "never", codexPrompt],
+      codexExecArgs(),
       {
         cwd: process.cwd(),
         env: process.env,
-        timeout: 1000 * 60 * 8,
+        input: codexPrompt,
+        timeout: CODEX_GENERATION_TIMEOUT_MS,
         reject: false,
       },
     );
     const files = await listGeneratedFiles(input.slug, "draft");
     const logs = [result.stdout, result.stderr].filter(Boolean).join("\n\n");
+
+    if (result.timedOut) {
+      throw new Error("Codex repair exceeded the 15-minute limit. Review the validation logs and try a narrower repair prompt.");
+    }
 
     if (result.exitCode !== 0) {
       throw new Error(logs || `Codex repair exited with code ${result.exitCode}.`);
@@ -172,9 +196,7 @@ export async function repairAffiliateStorefront(input: RepairAffiliateStorefront
       logs: logs || "Codex repair completed without console output.",
     };
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-
-    if (message.includes("ENOENT") || message.includes("not found")) {
+    if (isMissingCodexExecutable(error)) {
       throw new Error("Codex CLI was not found. Install and authenticate Codex CLI, then retry.");
     }
 

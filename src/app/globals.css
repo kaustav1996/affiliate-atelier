@@ -141,13 +141,117 @@ textarea:focus-visible {
   --tone-panel: var(--smoke);
   --tone-accent: var(--amber);
   --tone-rose: var(--rose);
+  position: relative;
+  isolation: isolate;
   min-height: 100vh;
+  overflow: hidden;
   background:
     linear-gradient(135deg, color-mix(in oklch, var(--tone-accent) 14%, transparent), transparent 34%),
     linear-gradient(90deg, color-mix(in oklch, var(--tone-ink) 4%, transparent) 1px, transparent 1px) 0 0 / 54px 54px,
     var(--tone-bg);
   color: var(--tone-ink);
   padding: clamp(16px, 3vw, 44px);
+}
+
+.effect-bubbles .store-nav,
+.effect-bubbles .store-hero,
+.effect-bubbles .product-runway,
+.effect-bubbles .preview-ribbon,
+.effect-bubbles .success-panel {
+  position: relative;
+  z-index: 1;
+}
+
+.floating-bubbles {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.floating-bubble {
+  --bubble-size: 92px;
+  --bubble-drift: 0vw;
+  --bubble-duration: 18s;
+  position: absolute;
+  bottom: -22vh;
+  left: var(--bubble-left);
+  width: var(--bubble-size);
+  aspect-ratio: 1;
+  border: 1px solid color-mix(in oklch, var(--tone-accent) 68%, transparent);
+  border-radius: 999px;
+  background:
+    radial-gradient(circle at 32% 28%, color-mix(in oklch, var(--tone-ink) 80%, transparent), transparent 0.42rem),
+    radial-gradient(circle at 62% 70%, color-mix(in oklch, var(--tone-rose) 34%, transparent), transparent 34%),
+    radial-gradient(circle at 50% 50%, color-mix(in oklch, var(--tone-accent) 20%, transparent), transparent 64%);
+  box-shadow:
+    inset 0 0 18px color-mix(in oklch, var(--tone-accent) 28%, transparent),
+    inset -14px -18px 28px color-mix(in oklch, var(--tone-rose) 20%, transparent),
+    0 0 26px color-mix(in oklch, var(--tone-accent) 30%, transparent),
+    0 0 62px color-mix(in oklch, var(--tone-rose) 18%, transparent);
+  opacity: 0;
+  mix-blend-mode: screen;
+  animation:
+    floating-bubble-rise var(--bubble-duration) linear infinite,
+    floating-bubble-pulse 4.8s var(--ease-premium) infinite;
+  will-change: transform, opacity;
+}
+
+.floating-bubble-1 {
+  --bubble-left: 7%;
+  --bubble-size: 112px;
+  --bubble-drift: 9vw;
+  --bubble-duration: 19s;
+  animation-delay: -12s, -1s;
+}
+
+.floating-bubble-2 {
+  --bubble-left: 19%;
+  --bubble-size: 48px;
+  --bubble-drift: -5vw;
+  --bubble-duration: 14s;
+  animation-delay: -8s, -2s;
+}
+
+.floating-bubble-3 {
+  --bubble-left: 35%;
+  --bubble-size: 144px;
+  --bubble-drift: 10vw;
+  --bubble-duration: 24s;
+  animation-delay: -18s, -3s;
+}
+
+.floating-bubble-4 {
+  --bubble-left: 52%;
+  --bubble-size: 76px;
+  --bubble-drift: -8vw;
+  --bubble-duration: 18s;
+  animation-delay: -10s, -1.5s;
+}
+
+.floating-bubble-5 {
+  --bubble-left: 66%;
+  --bubble-size: 122px;
+  --bubble-drift: 6vw;
+  --bubble-duration: 22s;
+  animation-delay: -15s, -2.5s;
+}
+
+.floating-bubble-6 {
+  --bubble-left: 80%;
+  --bubble-size: 58px;
+  --bubble-drift: -7vw;
+  --bubble-duration: 16s;
+  animation-delay: -6s, -1s;
+}
+
+.floating-bubble-7 {
+  --bubble-left: 91%;
+  --bubble-size: 156px;
+  --bubble-drift: -11vw;
+  --bubble-duration: 27s;
+  animation-delay: -21s, -3.5s;
 }
 
 .store-nav,
@@ -503,6 +607,26 @@ textarea:focus-visible {
   color: var(--danger);
 }
 
+.demo-card-details {
+  display: grid;
+  gap: var(--space-xs);
+  border: 1px solid color-mix(in oklch, var(--tone-accent) 42%, transparent);
+  border-radius: 8px;
+  background: color-mix(in oklch, var(--tone-panel) 62%, transparent);
+  padding: var(--space-md);
+}
+
+.demo-card-details span {
+  color: color-mix(in oklch, var(--tone-ink) 68%, transparent);
+  font-size: 0.9rem;
+}
+
+.demo-card-details strong {
+  font-family: "SFMono-Regular", Consolas, monospace;
+  font-size: 1rem;
+  letter-spacing: 0;
+}
+
 .form-error {
   margin: 0;
   color: var(--danger);
@@ -754,6 +878,55 @@ textarea:focus-visible {
   padding: var(--space-md);
 }
 
+.generation-job {
+  display: grid;
+  gap: var(--space-sm);
+  border: 1px solid color-mix(in oklch, var(--amber) 34%, transparent);
+  border-radius: 8px;
+  background: color-mix(in oklch, var(--smoke) 42%, var(--ivory));
+  padding: var(--space-md);
+}
+
+.generation-job.running {
+  border-color: color-mix(in oklch, var(--forest) 34%, var(--amber));
+}
+
+.generation-job.completed {
+  border-color: color-mix(in oklch, var(--moss) 54%, var(--forest));
+}
+
+.generation-job.failed {
+  border-color: color-mix(in oklch, var(--danger) 46%, var(--ink));
+}
+
+.generation-job-copy {
+  display: grid;
+  gap: var(--space-xs);
+}
+
+.generation-job-copy span,
+.generation-job p {
+  margin: 0;
+  color: color-mix(in oklch, var(--ink) 68%, transparent);
+  font-size: 0.9rem;
+  line-height: 1.55;
+}
+
+.generation-progress {
+  overflow: hidden;
+  height: 10px;
+  border-radius: 999px;
+  background: color-mix(in oklch, var(--ink) 10%, transparent);
+}
+
+.generation-progress span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--forest), var(--amber));
+  transition: width 260ms var(--ease-premium);
+}
+
 .validation-state.passed {
   background: color-mix(in oklch, var(--forest) 18%, var(--ivory));
 }
@@ -833,6 +1006,37 @@ textarea:focus-visible {
 
   .checkout-stage {
     right: clamp(16px, 3vw, 44px);
+  }
+}
+
+@keyframes floating-bubble-rise {
+  0% {
+    transform: translate3d(0, 18vh, 0) scale(0.72);
+    opacity: 0;
+  }
+
+  12% {
+    opacity: 0.72;
+  }
+
+  74% {
+    opacity: 0.68;
+  }
+
+  100% {
+    transform: translate3d(var(--bubble-drift), -124vh, 0) scale(1.12);
+    opacity: 0;
+  }
+}
+
+@keyframes floating-bubble-pulse {
+  0%,
+  100% {
+    filter: saturate(1) brightness(1);
+  }
+
+  50% {
+    filter: saturate(1.35) brightness(1.18);
   }
 }
 

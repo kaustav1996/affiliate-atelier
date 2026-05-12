@@ -29,6 +29,8 @@ type CommerceExperienceProps = {
   } | null;
 };
 
+const FLOATING_BUBBLES = [1, 2, 3, 4, 5, 6, 7] as const;
+
 export function CommerceExperience({
   products,
   affiliateSlug,
@@ -39,6 +41,7 @@ export function CommerceExperience({
   viewer,
 }: CommerceExperienceProps) {
   const tone = manifest || defaultManifest(affiliateSlug);
+  const hasFloatingBubbles = generated && hasEffect(tone, "bubble");
   const [cartItems, setCartItems] = useState<CartItemView[]>([]);
   const [cartOpen, setCartOpen] = useState(false);
   const [checkoutOpen, setCheckoutOpen] = useState(false);
@@ -100,6 +103,7 @@ export function CommerceExperience({
       }
 
       setOrder(payload.order);
+      setCartItems([]);
       setCartOpen(false);
       setCheckoutOpen(false);
     });
@@ -110,10 +114,11 @@ export function CommerceExperience({
 
     return (
       <main
-        className={`commerce-shell success-shell ${generated ? "generated-tone" : ""}`}
+        className={`commerce-shell success-shell ${generated ? "generated-tone" : ""} ${hasFloatingBubbles ? "effect-bubbles" : ""}`}
         data-testid="storefront-root"
         style={toneStyles(tone)}
       >
+        {hasFloatingBubbles ? <FloatingBubbles /> : null}
         {preview ? <div className="preview-ribbon">Draft preview — validation mode</div> : null}
         <section className="success-panel" data-testid="success-message">
           <p className="eyebrow">{success.eyebrow}</p>
@@ -132,10 +137,11 @@ export function CommerceExperience({
 
   return (
     <main
-      className={`commerce-shell ${generated ? "generated-tone" : ""}`}
+      className={`commerce-shell ${generated ? "generated-tone" : ""} ${hasFloatingBubbles ? "effect-bubbles" : ""}`}
       data-testid="storefront-root"
       style={toneStyles(tone)}
     >
+      {hasFloatingBubbles ? <FloatingBubbles /> : null}
       {preview ? <div className="preview-ribbon">Draft preview — validation mode</div> : null}
       <nav className="store-nav" aria-label="Store navigation">
         <Link href="/" className="brand-mark">
@@ -253,10 +259,19 @@ export function CommerceExperience({
 
       {checkoutOpen ? (
         <section className="checkout-stage" aria-label="Checkout">
-          <div>
-            <p className="eyebrow">Secure test checkout</p>
-            <h2>{tone.checkoutLanguage}</h2>
-            <p>Fake card: 4242 4242 4242 4242 · 12/30 · 123</p>
+          <div className="drawer-header">
+            <div>
+              <p className="eyebrow">Secure test checkout</p>
+              <h2>{tone.checkoutLanguage}</h2>
+            </div>
+            <button className="text-button" onClick={() => setCheckoutOpen(false)}>
+              Close
+            </button>
+          </div>
+          <div className="demo-card-details" aria-label="Demo credit card details">
+            <span>Demo card</span>
+            <strong>4242 4242 4242 4242</strong>
+            <span>Expiry 12/30 · CVC 123 · ZIP 400001</span>
           </div>
           <label>
             Email
@@ -286,6 +301,16 @@ export function CommerceExperience({
   );
 }
 
+function FloatingBubbles() {
+  return (
+    <div className="floating-bubbles" aria-hidden="true">
+      {FLOATING_BUBBLES.map((bubble) => (
+        <span className={`floating-bubble floating-bubble-${bubble}`} key={bubble} />
+      ))}
+    </div>
+  );
+}
+
 function toneStyles(tone: GeneratedManifest) {
   return {
     "--tone-bg": tone.palette.background,
@@ -294,6 +319,35 @@ function toneStyles(tone: GeneratedManifest) {
     "--tone-accent": tone.palette.accent,
     "--tone-rose": tone.palette.rose,
   } as CSSProperties;
+}
+
+function hasEffect(tone: GeneratedManifest, effect: string) {
+  const effectNeedle = effect.toLowerCase();
+  const explicitEffects = tone.effects || [];
+
+  if (explicitEffects.some((item) => item.toLowerCase().includes(effectNeedle))) {
+    return true;
+  }
+
+  const success = tone.success;
+  const text = [
+    tone.title,
+    tone.eyebrow,
+    tone.hero,
+    tone.subcopy,
+    tone.badge,
+    tone.checkoutLanguage,
+    success?.eyebrow,
+    success?.title,
+    success?.body,
+    success?.affiliateAttribution,
+    success?.continueLabel,
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+
+  return text.includes(effectNeedle);
 }
 
 function formatSuccessText(template: string, order: CheckoutResult) {

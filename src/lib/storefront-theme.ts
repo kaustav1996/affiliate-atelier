@@ -5,6 +5,7 @@ export type GeneratedManifest = {
   subcopy: string;
   badge: string;
   checkoutLanguage: string;
+  effects?: string[];
   success?: {
     eyebrow: string;
     title: string;
