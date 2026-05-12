@@ -15,9 +15,23 @@ export type RepairAffiliateStorefrontInput = Omit<GenerateAffiliateStorefrontInp
 
 export type CodexGenerationMode = "full-generation" | "design-revision" | "surgical-revision";
 
+export type CodexProgressPhase =
+  | "setup"
+  | "planning"
+  | "inspection"
+  | "editing"
+  | "verification"
+  | "tool"
+  | "summary"
+  | "heartbeat"
+  | "error";
+
 export type CodexProgressEvent = {
   at: string;
   message: string;
+  phase: CodexProgressPhase;
+  detail?: string;
+  toolName?: string;
 };
 
 export type CodexProgressHandler = (event: CodexProgressEvent) => void;
@@ -173,7 +187,7 @@ export async function generateAffiliateStorefront(input: GenerateAffiliateStoref
   await fs.writeFile(promptPath, codexPrompt, "utf8");
 
   try {
-    input.onProgress?.(progress(`Using ${formatMode(mode)}. ${options.expectedDuration}.`));
+    input.onProgress?.(progress(`Using ${formatMode(mode)}. ${options.expectedDuration}.`, "setup"));
     await ensurePlaywrightMcp(input.onProgress);
     const result = await runCodexCli(codexPrompt, options, input.onProgress);
 
@@ -246,7 +260,7 @@ export async function repairAffiliateStorefront(input: RepairAffiliateStorefront
   const codexPrompt = buildCodexRepairPrompt(input);
 
   try {
-    input.onProgress?.(progress("Starting Codex auto-repair with validation logs."));
+    input.onProgress?.(progress("Starting Codex auto-repair with validation logs.", "setup"));
     await ensurePlaywrightMcp(input.onProgress);
     const result = await runCodexCli(
       codexPrompt,
@@ -281,7 +295,7 @@ export async function repairAffiliateStorefront(input: RepairAffiliateStorefront
 }
 
 async function ensurePlaywrightMcp(onProgress?: CodexProgressHandler) {
-  onProgress?.(progress("Checking Codex browser MCP access."));
+  onProgress?.(progress("Checking Codex browser MCP access.", "setup"));
 
   const list = await execa("codex", ["mcp", "list"], {
     cwd: process.cwd(),
@@ -296,11 +310,11 @@ async function ensurePlaywrightMcp(onProgress?: CodexProgressHandler) {
   }
 
   if (/^playwright\s+/m.test(list.stdout)) {
-    onProgress?.(progress("Playwright MCP is available for browser screenshots."));
+    onProgress?.(progress("Playwright MCP is available for browser screenshots.", "setup"));
     return;
   }
 
-  onProgress?.(progress("Installing Playwright MCP for future Codex browser access."));
+  onProgress?.(progress("Installing Playwright MCP for future Codex browser access.", "setup"));
   const add = await execa(
     "codex",
     ["mcp", "add", "playwright", "--", "npx", "-y", "@playwright/mcp@latest", "--headless"],
@@ -317,7 +331,7 @@ async function ensurePlaywrightMcp(onProgress?: CodexProgressHandler) {
     throw new Error(addLogs || "Could not install Playwright MCP for Codex.");
   }
 
-  onProgress?.(progress("Playwright MCP installed; Codex can inspect reference URLs."));
+  onProgress?.(progress("Playwright MCP installed; Codex can inspect reference URLs.", "setup"));
 }
 
 async function runCodexCli(
@@ -325,7 +339,7 @@ async function runCodexCli(
   options: CodexRunOptions,
   onProgress?: CodexProgressHandler,
 ) {
-  onProgress?.(progress("Launching Codex CLI."));
+  onProgress?.(progress("Launching Codex CLI.", "setup"));
   const child = execa("codex", codexExecArgs(), {
     cwd: process.cwd(),
     env: process.env,
@@ -343,8 +357,8 @@ async function runCodexCli(
       const parsed = parseCodexJsonLine(line);
       logs.push(parsed.logLine);
 
-      if (parsed.progressMessage) {
-        onProgress?.(progress(parsed.progressMessage));
+      if (parsed.progressEvent) {
+        onProgress?.(timestampProgress(parsed.progressEvent));
       }
     }
   });
@@ -363,23 +377,23 @@ async function runCodexCli(
   };
 }
 
-function parseCodexJsonLine(line: string) {
+export function parseCodexJsonLine(line: string) {
   try {
     const event = JSON.parse(line) as unknown;
-    const progressMessage = progressMessageForCodexEvent(event);
+    const progressEvent = progressEventForCodexEvent(event);
     return {
       logLine: humanizeCodexEvent(event),
-      progressMessage,
+      progressEvent,
     };
   } catch {
     return {
       logLine: line,
-      progressMessage: line.length < 160 ? line : undefined,
+      progressEvent: line.length < 160 ? { message: line, phase: "summary" as const } : undefined,
     };
   }
 }
 
-function progressMessageForCodexEvent(event: unknown) {
+function progressEventForCodexEvent(event: unknown): Omit<CodexProgressEvent, "at"> | undefined {
   if (!event || typeof event !== "object") {
     return undefined;
   }
@@ -388,28 +402,154 @@ function progressMessageForCodexEvent(event: unknown) {
   const payload = "payload" in event && event.payload && typeof event.payload === "object" ? event.payload as Record<string, unknown> : null;
   const payloadType = payload && "type" in payload ? String(payload.type) : "";
 
+  if (type === "response_item" && payloadType === "message" && payload && "content" in payload) {
+    const message = compactText(extractText(payload.content));
+
+    if (message && message.length <= 260) {
+      return { message, phase: "summary" };
+    }
+  }
+
   if (type === "response_item" && payloadType === "function_call") {
     const name = payload && "name" in payload ? String(payload.name) : "a tool";
-    return `Codex is using ${name}.`;
+    return progressForToolCall(name, payload || {});
   }
 
   if (type === "response_item" && payloadType === "function_call_output") {
-    return "Codex finished a tool call.";
+    return {
+      message: "Codex finished the previous tool call.",
+      phase: "tool",
+    };
   }
 
   if (type === "turn_started") {
-    return "Codex is planning the edit.";
+    return {
+      message: "Codex started a reasoning turn.",
+      phase: "planning",
+    };
   }
 
   if (type === "turn_completed") {
-    return "Codex is finishing up.";
+    return {
+      message: "Codex completed a reasoning turn.",
+      phase: "summary",
+    };
   }
 
   if (type === "error") {
-    return "Codex reported an error.";
+    const message = "message" in event && typeof event.message === "string"
+      ? compactText(event.message)
+      : "Codex reported an error.";
+    return {
+      message,
+      phase: "error",
+    };
   }
 
   return undefined;
+}
+
+function progressForToolCall(name: string, payload: Record<string, unknown>): Omit<CodexProgressEvent, "at"> {
+  const toolName = normalizeToolName(name);
+  const args = parseToolArguments(payload);
+  const command = typeof args?.cmd === "string" ? args.cmd : "";
+  const detail = command ? summarizeCommand(command) : undefined;
+
+  if (toolName === "apply_patch") {
+    return {
+      message: "Codex is applying a source patch.",
+      phase: "editing",
+      toolName,
+    };
+  }
+
+  if (toolName === "exec_command") {
+    return {
+      message: commandMessage(command),
+      phase: commandPhase(command),
+      detail,
+      toolName,
+    };
+  }
+
+  if (toolName === "view_image" || toolName.includes("browser") || toolName.includes("playwright")) {
+    return {
+      message: `Codex is checking the preview with ${toolName}.`,
+      phase: "verification",
+      toolName,
+    };
+  }
+
+  return {
+    message: `Codex is using ${toolName}.`,
+    phase: "tool",
+    toolName,
+  };
+}
+
+function normalizeToolName(name: string) {
+  return name.split(".").at(-1)?.replace(/^_/, "") || name;
+}
+
+function parseToolArguments(payload: Record<string, unknown>) {
+  const raw = payload.arguments ?? payload.args ?? payload.input;
+
+  if (typeof raw === "string") {
+    try {
+      return JSON.parse(raw) as Record<string, unknown>;
+    } catch {
+      return null;
+    }
+  }
+
+  return raw && typeof raw === "object" ? raw as Record<string, unknown> : null;
+}
+
+function commandPhase(command: string): CodexProgressPhase {
+  if (/\b(apply_patch|cat\s*>|tee\s+|mv\s+|cp\s+|rm\s+|mkdir\s+)/.test(command)) {
+    return "editing";
+  }
+
+  if (/\b(npm run (typecheck|lint|test|build)|vitest|playwright|tsc|eslint|curl|psql|prisma)\b/.test(command)) {
+    return "verification";
+  }
+
+  if (/\b(rg|sed|ls|find|git (status|diff|show|log)|wc|file)\b/.test(command)) {
+    return "inspection";
+  }
+
+  return "tool";
+}
+
+function commandMessage(command: string) {
+  const phase = commandPhase(command);
+
+  if (phase === "verification") {
+    return `Codex is running ${shortCommandLabel(command)}.`;
+  }
+
+  if (phase === "editing") {
+    return `Codex is updating files with ${shortCommandLabel(command)}.`;
+  }
+
+  if (phase === "inspection") {
+    return `Codex is inspecting ${shortCommandLabel(command)}.`;
+  }
+
+  return `Codex is running ${shortCommandLabel(command)}.`;
+}
+
+function shortCommandLabel(command: string) {
+  const trimmed = command.trim().replace(/\s+/g, " ");
+  const firstSegment = trimmed.split("&&")[0]?.split(";")[0]?.trim() || trimmed;
+
+  return firstSegment.length > 72 ? `${firstSegment.slice(0, 69)}...` : firstSegment;
+}
+
+function summarizeCommand(command: string) {
+  const compact = command.trim().replace(/\s+/g, " ");
+
+  return compact.length > 160 ? `${compact.slice(0, 157)}...` : compact;
 }
 
 function humanizeCodexEvent(event: unknown) {
@@ -457,10 +597,22 @@ function extractText(value: unknown): string {
   return "";
 }
 
-function progress(message: string): CodexProgressEvent {
+function compactText(value: string) {
+  return value.replace(/\s+/g, " ").trim();
+}
+
+function progress(message: string, phase: CodexProgressPhase): CodexProgressEvent {
   return {
     at: new Date().toISOString(),
     message,
+    phase,
+  };
+}
+
+function timestampProgress(event: Omit<CodexProgressEvent, "at">): CodexProgressEvent {
+  return {
+    at: new Date().toISOString(),
+    ...event,
   };
 }
 

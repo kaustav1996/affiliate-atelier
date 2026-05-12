@@ -1153,7 +1153,46 @@ textarea:focus-visible {
 }
 
 .generation-events span {
+  display: grid;
+  gap: 4px;
   min-width: 0;
+}
+
+.generation-event-phase {
+  justify-self: start;
+  border: 1px solid color-mix(in oklch, var(--ink) 10%, transparent);
+  border-radius: 999px;
+  background: color-mix(in oklch, var(--ivory) 76%, transparent);
+  padding: 2px 7px;
+  color: color-mix(in oklch, var(--ink) 62%, transparent);
+  font-family: "SFMono-Regular", Consolas, monospace;
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+.generation-event-phase.phase-editing {
+  border-color: color-mix(in oklch, var(--amber) 38%, transparent);
+  color: color-mix(in oklch, var(--amber) 72%, var(--ink));
+}
+
+.generation-event-phase.phase-verification {
+  border-color: color-mix(in oklch, var(--moss) 42%, transparent);
+  color: color-mix(in oklch, var(--forest) 78%, var(--ink));
+}
+
+.generation-event-phase.phase-error {
+  border-color: color-mix(in oklch, var(--danger) 38%, transparent);
+  color: var(--danger);
+}
+
+.generation-events small {
+  color: color-mix(in oklch, var(--ink) 56%, transparent);
+  font-family: "SFMono-Regular", Consolas, monospace;
+  font-size: 0.76rem;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
 }
 
 .generation-recency {

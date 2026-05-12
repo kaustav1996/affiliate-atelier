@@ -69,6 +69,21 @@ export async function listGeneratedFiles(slug: string, state: "draft" | "publish
   return walk(directory);
 }
 
+export async function getGeneratedFileStatus(slug: string, state: "draft" | "published" = "draft") {
+  const directory = state === "draft" ? generatedPaths(slug).draftDir : generatedPaths(slug).publishedDir;
+  const files = await listGeneratedFiles(slug, state);
+  const [manifest, newestMtime] = await Promise.all([
+    readGeneratedManifest(slug, state),
+    newestGeneratedMtime(directory, files),
+  ]);
+
+  return {
+    files,
+    manifestReady: Boolean(manifest),
+    updatedAt: newestMtime?.toISOString() || null,
+  };
+}
+
 function shouldIgnoreGeneratedEntry(relativePath: string) {
   return relativePath === ".DS_Store"
     || relativePath.startsWith(`node_modules${path.sep}`)
@@ -85,4 +100,25 @@ export async function readGeneratedManifest(slug: string, state: "draft" | "publ
   } catch {
     return null;
   }
+}
+
+async function newestGeneratedMtime(directory: string, files: string[]) {
+  const mtimes = await Promise.all(
+    files.map(async (file) => {
+      try {
+        const stat = await fs.stat(path.join(directory, file));
+        return stat.mtime;
+      } catch {
+        return null;
+      }
+    }),
+  );
+
+  return mtimes.reduce<Date | null>((newest, value) => {
+    if (!value) {
+      return newest;
+    }
+
+    return !newest || value > newest ? value : newest;
+  }, null);
 }
