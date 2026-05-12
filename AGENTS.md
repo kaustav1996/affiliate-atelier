@@ -63,6 +63,7 @@ env -u CODEX_MOCK npm run dev -- -p 3002
 ```
 
 Do not use `CODEX_MOCK`. Atelier generation and validation repair must invoke the real Codex CLI.
+Generation uses `codex exec --dangerously-bypass-approvals-and-sandbox --json -` so the Atelier can poll partial progress. The app registers Playwright MCP for Codex on first use when it is missing, allowing generated-design jobs to inspect public reference URLs and local preview pages in a browser. Narrow follow-up prompts should stay surgical: preserve the generated manifest, palette, layout, copy, and component structure unless the user explicitly asks for a redesign.
 
 ## Validation Integrity
 

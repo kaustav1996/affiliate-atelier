@@ -1,8 +1,13 @@
 import { randomUUID } from "node:crypto";
 import {
+  codexRunOptions,
   CODEX_GENERATION_TIMEOUT_SECONDS,
+  type CodexGenerationMode,
+  type CodexProgressEvent,
+  determineGenerationMode,
   generateAffiliateStorefront,
 } from "@/lib/codex/run-codex";
+import { listGeneratedFiles } from "@/lib/generated-storefront";
 import { prisma } from "@/lib/prisma";
 
 export const GENERATION_TIMEOUT_SECONDS = CODEX_GENERATION_TIMEOUT_SECONDS;
@@ -19,6 +24,8 @@ export type GenerationJobSnapshot = {
   elapsedSeconds: number;
   timeoutSeconds: number;
   expectedDuration: string;
+  mode: CodexGenerationMode;
+  progressEvents: CodexProgressEvent[];
   files?: string[];
   logs?: string;
   error?: string;
@@ -31,6 +38,7 @@ type GenerationJob = GenerationJobSnapshot & {
 };
 
 const JOB_RETENTION_MS = 1000 * 60 * 30;
+const HEARTBEAT_INTERVAL_MS = 1000 * 30;
 
 declare global {
   var __scentforgeGenerationJobs: Map<string, GenerationJob> | undefined;
@@ -41,7 +49,7 @@ function jobStore() {
   return globalThis.__scentforgeGenerationJobs;
 }
 
-export function startGenerationJob({
+export async function startGenerationJob({
   affiliateId,
   slug,
   prompt,
@@ -61,18 +69,27 @@ export function startGenerationJob({
   cleanupOldJobs();
 
   const now = new Date();
+  const existingFiles = await listGeneratedFiles(slug, "draft");
+  const mode = determineGenerationMode(prompt, existingFiles.length > 0);
+  const options = codexRunOptions(mode);
+  const modeMessage = `Using ${mode.replace(/-/g, " ")}. ${options.expectedDuration}.`;
   const job: GenerationJob = {
     id: randomUUID(),
     affiliateId,
     slug,
     prompt,
     status: "RUNNING",
-    message: "Codex CLI is generating the storefront in the background.",
+    message: "Preparing Codex CLI job.",
     startedAt: now.toISOString(),
     completedAt: null,
     elapsedSeconds: 0,
-    timeoutSeconds: GENERATION_TIMEOUT_SECONDS,
-    expectedDuration: GENERATION_EXPECTED_DURATION,
+    timeoutSeconds: options.timeoutMs / 1000,
+    expectedDuration: options.expectedDuration,
+    mode,
+    progressEvents: [
+      { at: now.toISOString(), message: "Preparing Codex CLI job." },
+      { at: now.toISOString(), message: modeMessage },
+    ],
   };
 
   jobStore().set(job.id, job);
@@ -100,8 +117,14 @@ export function getGenerationJob(affiliateId: string, jobId: string) {
 }
 
 async function runGenerationJob(job: GenerationJob) {
+  const heartbeat = startHeartbeat(job);
+
   try {
-    const result = await generateAffiliateStorefront({ slug: job.slug, prompt: job.prompt });
+    const result = await generateAffiliateStorefront({
+      slug: job.slug,
+      prompt: job.prompt,
+      onProgress: (event) => addProgress(job, event.message, event.at),
+    });
 
     await prisma.affiliate.update({
       where: { id: job.affiliateId },
@@ -112,12 +135,15 @@ async function runGenerationJob(job: GenerationJob) {
     job.message = "Codex finished the draft. Run validation before publishing.";
     job.files = result.files;
     job.logs = result.logs;
+    addProgress(job, job.message);
   } catch (error) {
     job.status = "FAILED";
     job.message = "Codex generation failed.";
     job.error = error instanceof Error ? error.message : String(error);
     job.logs = job.error;
+    addProgress(job, job.error || job.message);
   } finally {
+    clearInterval(heartbeat);
     job.completedAt = new Date().toISOString();
     job.elapsedSeconds = elapsedSeconds(job.startedAt);
   }
@@ -133,6 +159,8 @@ function toSnapshot(job: GenerationJob): GenerationJobSnapshot {
     elapsedSeconds: job.status === "RUNNING" ? elapsedSeconds(job.startedAt) : job.elapsedSeconds,
     timeoutSeconds: job.timeoutSeconds,
     expectedDuration: job.expectedDuration,
+    mode: job.mode,
+    progressEvents: job.progressEvents,
     files: job.files,
     logs: job.logs,
     error: job.error,
@@ -151,4 +179,49 @@ function cleanupOldJobs() {
       jobStore().delete(id);
     }
   }
+}
+
+function addProgress(job: GenerationJob, message: string, at = new Date().toISOString()) {
+  if (job.progressEvents.at(-1)?.message === message) {
+    return;
+  }
+
+  job.message = message;
+  job.progressEvents = [...job.progressEvents, { at, message }].slice(-12);
+}
+
+function startHeartbeat(job: GenerationJob) {
+  return setInterval(() => {
+    if (job.status !== "RUNNING") {
+      return;
+    }
+
+    const latest = job.progressEvents.at(-1);
+    const silenceSeconds = latest ? elapsedSeconds(latest.at) : elapsedSeconds(job.startedAt);
+
+    if (silenceSeconds < 30) {
+      return;
+    }
+
+    addProgress(job, heartbeatMessage(job, silenceSeconds));
+  }, HEARTBEAT_INTERVAL_MS);
+}
+
+function heartbeatMessage(job: GenerationJob, silenceSeconds: number) {
+  if (job.mode === "surgical-revision") {
+    return `Still waiting on Codex CLI. No new output for ${formatShortDuration(silenceSeconds)}.`;
+  }
+
+  return `Still running. Codex may be browsing, editing, or verifying. No new output for ${formatShortDuration(silenceSeconds)}.`;
+}
+
+function formatShortDuration(totalSeconds: number) {
+  if (totalSeconds < 60) {
+    return `${totalSeconds}s`;
+  }
+
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+
+  return seconds ? `${minutes}m ${seconds}s` : `${minutes}m`;
 }

@@ -27,6 +27,8 @@ type GenerationJobView = {
   elapsedSeconds: number;
   timeoutSeconds: number;
   expectedDuration: string;
+  mode: "full-generation" | "design-revision" | "surgical-revision";
+  progressEvents: { at: string; message: string }[];
   files?: string[];
   logs?: string;
   error?: string;
@@ -66,6 +68,13 @@ export function AtelierClient({ slug, initialPrompt, initialFiles, validationRun
   const generationStartedAt = generationJob?.startedAt;
   const isBusy = isPending || isGenerating;
   const visibleElapsedSeconds = isGenerating ? elapsedSeconds : generationJob?.elapsedSeconds || 0;
+  const latestProgressEvent = generationJob?.progressEvents?.at(-1);
+  const generationClock = generationStartedAt ? new Date(generationStartedAt).getTime() + visibleElapsedSeconds * 1000 : 0;
+  const secondsSinceLastProgress = isGenerating && latestProgressEvent
+    ? Math.max(0, Math.floor((generationClock - new Date(latestProgressEvent.at).getTime()) / 1000))
+    : 0;
+  const progressIsQuiet = isGenerating && secondsSinceLastProgress >= 90;
+  const generationStatusHeading = generationJob ? generationHeading(generationJob) : message || (files.length ? "Generated files" : "Idle");
   const progressPercent = generationJob
     ? Math.min(100, Math.max(7, Math.round((visibleElapsedSeconds / generationJob.timeoutSeconds) * 100)))
     : 0;
@@ -176,7 +185,7 @@ export function AtelierClient({ slug, initialPrompt, initialFiles, validationRun
 
         setGenerationJob(payload.job);
         setElapsedSeconds(payload.job.elapsedSeconds);
-        setLogs("Codex CLI job started. Live status will update here when generation completes.");
+        setLogs("Codex CLI job started. Live status will update here as progress events arrive.");
         setMessage(payload.job.message);
       } catch (error) {
         setMessage(error instanceof Error ? error.message : "Generation failed to start.");
@@ -272,7 +281,7 @@ export function AtelierClient({ slug, initialPrompt, initialFiles, validationRun
           <span>02</span>
           <div>
             <p className="eyebrow">Generation status</p>
-            <h2>{message || (files.length ? "Generated files" : "Idle")}</h2>
+            <h2>{generationStatusHeading}</h2>
           </div>
         </div>
         {generationJob ? (
@@ -286,7 +295,8 @@ export function AtelierClient({ slug, initialPrompt, initialFiles, validationRun
                     : "Generation stopped."}
               </strong>
               <span>
-                Elapsed {formatDuration(visibleElapsedSeconds)} · {generationJob.expectedDuration} · hard limit{" "}
+                {formatGenerationMode(generationJob.mode)} · elapsed {formatDuration(visibleElapsedSeconds)} ·{" "}
+                {generationJob.expectedDuration} · hard limit{" "}
                 {formatDuration(generationJob.timeoutSeconds)}
               </span>
             </div>
@@ -296,6 +306,27 @@ export function AtelierClient({ slug, initialPrompt, initialFiles, validationRun
             <p>
               The browser is polling a short status endpoint, so the tab should not time out while Codex writes files.
             </p>
+            {latestProgressEvent ? (
+              <div className={`generation-recency ${progressIsQuiet ? "quiet" : ""}`}>
+                <div className="generation-recency-line">
+                  <span>Last update:</span>
+                  <strong>{formatRelativeDuration(secondsSinceLastProgress)}</strong>
+                </div>
+                {progressIsQuiet ? (
+                  <p className="generation-recency-note">Codex may be browsing, thinking, or verifying without new output.</p>
+                ) : null}
+              </div>
+            ) : null}
+            {generationJob.progressEvents?.length ? (
+              <ol className="generation-events" aria-label="Codex progress events">
+                {generationJob.progressEvents.map((event) => (
+                  <li key={`${event.at}-${event.message}`}>
+                    <time>{formatEventTime(event.at)}</time>
+                    <span>{event.message}</span>
+                  </li>
+                ))}
+              </ol>
+            ) : null}
             {generationJob.error ? <p className="form-error">{generationJob.error}</p> : null}
           </div>
         ) : null}
@@ -361,6 +392,53 @@ function formatDuration(totalSeconds: number) {
   const seconds = totalSeconds % 60;
 
   return `${minutes}:${String(seconds).padStart(2, "0")}`;
+}
+
+function formatRelativeDuration(totalSeconds: number) {
+  if (totalSeconds < 5) {
+    return "just now";
+  }
+
+  if (totalSeconds < 60) {
+    return `${totalSeconds}s ago`;
+  }
+
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+
+  return seconds ? `${minutes}m ${seconds}s ago` : `${minutes}m ago`;
+}
+
+function formatEventTime(value: string) {
+  return new Intl.DateTimeFormat(undefined, {
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  }).format(new Date(value));
+}
+
+function formatGenerationMode(mode: GenerationJobView["mode"]) {
+  if (mode === "surgical-revision") {
+    return "Surgical edit";
+  }
+
+  if (mode === "design-revision") {
+    return "Design revision";
+  }
+
+  return "Full generation";
+}
+
+function generationHeading(job: GenerationJobView) {
+  if (job.status === "COMPLETED") {
+    return "Generation finished";
+  }
+
+  if (job.status === "FAILED") {
+    return "Generation stopped";
+  }
+
+  return "Generating storefront";
 }
 
 function generationButtonLabel({

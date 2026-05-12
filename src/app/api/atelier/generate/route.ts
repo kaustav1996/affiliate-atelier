@@ -30,7 +30,7 @@ export async function POST(request: Request) {
       data: { atelierPrompt: prompt },
     });
 
-    const job = startGenerationJob({
+    const job = await startGenerationJob({
       affiliateId: affiliate.id,
       slug: affiliate.slug,
       prompt,

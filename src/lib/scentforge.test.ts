@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 import { CommerceExperience } from "@/components/CommerceExperience";
 import { ValidationStatus } from "@/generated/prisma/enums";
 import { hashPassword } from "@/lib/auth/password";
-import { codexExecArgs } from "@/lib/codex/run-codex";
+import { buildCodexPrompt, codexExecArgs, determineGenerationMode } from "@/lib/codex/run-codex";
 import { calculateCommission } from "@/lib/money";
 import { getAffiliateLiveMetrics } from "@/lib/metrics";
 import { createCheckoutOrder } from "@/lib/orders";
@@ -50,9 +50,42 @@ describe("ScentForge business rules", () => {
     expect(codexExecArgs()).toEqual([
       "exec",
       "--dangerously-bypass-approvals-and-sandbox",
+      "--json",
       "-",
     ]);
     expect(codexExecArgs()).not.toContain("--ask-for-approval");
+  });
+
+  it("classifies narrow follow-up prompts as surgical revisions", () => {
+    expect(determineGenerationMode("the Secure test checkout email and address is still dark", true)).toBe("surgical-revision");
+    expect(determineGenerationMode("change design to go along with https://www.thedevilwearsprada.co.uk/", true)).toBe("design-revision");
+    expect(determineGenerationMode("cyberpunk with led borders", false)).toBe("full-generation");
+  });
+
+  it("keeps surgical Codex prompts scoped to minimal diffs", () => {
+    const prompt = buildCodexPrompt({
+      slug: "demo",
+      prompt: "the Secure test checkout email and address is still dark",
+      mode: "surgical-revision",
+    });
+
+    expect(prompt).toContain("Surgical revision rules");
+    expect(prompt).toContain("Preserve the existing manifest title");
+    expect(prompt).toContain("Do not reinterpret the storefront aesthetic");
+    expect(prompt).toContain("Do not assume edits to generated CheckoutExperience.tsx");
+    expect(prompt).toContain("exit immediately with a short summary");
+  });
+
+  it("allows browser and network access for reference-driven design prompts", () => {
+    const prompt = buildCodexPrompt({
+      slug: "demo",
+      prompt: "change design to go along with https://www.thedevilwearsprada.co.uk/",
+      mode: "design-revision",
+    });
+
+    expect(prompt).toContain("use browser access to open it");
+    expect(prompt).toContain("You may use network access");
+    expect(prompt).not.toContain("Do not call external network APIs.");
   });
 
   it("renders manifest-driven floating bubbles for generated storefront effects", () => {
