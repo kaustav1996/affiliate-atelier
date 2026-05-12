@@ -1142,11 +1142,9 @@ textarea:focus-visible {
 }
 
 .generation-recency {
-  display: inline-flex;
-  align-items: center;
-  flex-wrap: wrap;
+  display: grid;
   justify-self: start;
-  gap: 8px;
+  gap: 6px;
   border-radius: 6px;
   background: color-mix(in oklch, var(--paper) 66%, transparent);
   padding: 9px 12px;
@@ -1154,7 +1152,14 @@ textarea:focus-visible {
   font-size: 0.86rem;
 }
 
-.generation-recency span {
+.generation-recency-line {
+  display: inline-flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.generation-recency-line span:first-child {
   color: color-mix(in oklch, var(--ink) 48%, transparent);
   font-weight: 800;
   text-transform: uppercase;
@@ -1170,10 +1175,12 @@ textarea:focus-visible {
   text-transform: none;
 }
 
-.generation-recency em {
-  flex-basis: 100%;
+.generation-recency-note {
+  max-width: 68ch;
+  margin: 0;
   color: color-mix(in oklch, var(--ink) 62%, transparent);
-  font-style: normal;
+  font-size: 0.84rem;
+  line-height: 1.45;
 }
 
 .generation-recency.quiet {

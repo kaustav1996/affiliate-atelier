@@ -308,10 +308,14 @@ export function AtelierClient({ slug, initialPrompt, initialFiles, validationRun
             </p>
             {latestProgressEvent ? (
               <div className={`generation-recency ${progressIsQuiet ? "quiet" : ""}`}>
-                <span>Last update</span>
-                <strong>{formatRelativeDuration(secondsSinceLastProgress)}</strong>
-                <span className="generation-recency-suffix">ago</span>
-                {progressIsQuiet ? <em>Codex may be browsing, thinking, or verifying without new output.</em> : null}
+                <div className="generation-recency-line">
+                  <span>Last update:</span>
+                  <strong>{formatRelativeDuration(secondsSinceLastProgress)}</strong>
+                  <span className="generation-recency-suffix">ago</span>
+                </div>
+                {progressIsQuiet ? (
+                  <p className="generation-recency-note">Codex may be browsing, thinking, or verifying without new output.</p>
+                ) : null}
               </div>
             ) : null}
             {generationJob.progressEvents?.length ? (
