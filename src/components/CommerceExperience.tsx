@@ -5,7 +5,14 @@ import Image from "next/image";
 import type { CSSProperties } from "react";
 import { useMemo, useState, useTransition } from "react";
 import { formatMoney, formatPercent } from "@/lib/money";
-import type { GeneratedManifest } from "@/lib/storefront-theme";
+import type {
+  GeneratedAmbientAnimation,
+  GeneratedAmbientEffect,
+  GeneratedAmbientElement,
+  GeneratedAmbientKeyframe,
+  GeneratedAmbientStyle,
+  GeneratedManifest,
+} from "@/lib/storefront-theme";
 import { defaultManifest } from "@/lib/storefront-theme";
 import type { CartItemView, ProductView } from "@/lib/storefront-contract";
 
@@ -29,7 +36,9 @@ type CommerceExperienceProps = {
   } | null;
 };
 
-const FLOATING_BUBBLES = [1, 2, 3, 4, 5, 6, 7] as const;
+const MAX_AMBIENT_EFFECTS = 3;
+const MAX_AMBIENT_ELEMENTS = 18;
+const MAX_AMBIENT_KEYFRAMES = 6;
 
 export function CommerceExperience({
   products,
@@ -41,7 +50,8 @@ export function CommerceExperience({
   viewer,
 }: CommerceExperienceProps) {
   const tone = manifest || defaultManifest(affiliateSlug);
-  const hasFloatingBubbles = generated && hasEffect(tone, "bubble");
+  const ambientEffects = generated ? sanitizeAmbientEffects(tone.ambientEffects) : [];
+  const hasAmbientEffects = ambientEffects.length > 0;
   const [cartItems, setCartItems] = useState<CartItemView[]>([]);
   const [cartOpen, setCartOpen] = useState(false);
   const [checkoutOpen, setCheckoutOpen] = useState(false);
@@ -116,11 +126,11 @@ export function CommerceExperience({
 
     return (
       <main
-        className={`commerce-shell success-shell ${generated ? "generated-tone" : ""} ${hasFloatingBubbles ? "effect-bubbles" : ""}`}
+        className={`commerce-shell success-shell ${generated ? "generated-tone" : ""} ${hasAmbientEffects ? "has-ambient-effects" : ""}`}
         data-testid="storefront-root"
         style={toneStyles(tone)}
       >
-        {hasFloatingBubbles ? <FloatingBubbles /> : null}
+        {hasAmbientEffects ? <AmbientEffects effects={ambientEffects} /> : null}
         {preview ? <div className="preview-ribbon">Draft preview — validation mode</div> : null}
         <section className="success-panel" data-testid="success-message">
           <p className="eyebrow">{success.eyebrow}</p>
@@ -139,11 +149,11 @@ export function CommerceExperience({
 
   return (
     <main
-      className={`commerce-shell ${generated ? "generated-tone" : ""} ${hasFloatingBubbles ? "effect-bubbles" : ""}`}
+      className={`commerce-shell ${generated ? "generated-tone" : ""} ${hasAmbientEffects ? "has-ambient-effects" : ""}`}
       data-testid="storefront-root"
       style={toneStyles(tone)}
     >
-      {hasFloatingBubbles ? <FloatingBubbles /> : null}
+      {hasAmbientEffects ? <AmbientEffects effects={ambientEffects} /> : null}
       {preview ? <div className="preview-ribbon">Draft preview — validation mode</div> : null}
       <nav className="store-nav" aria-label="Store navigation">
         <Link href="/" className="brand-mark">
@@ -333,12 +343,37 @@ export function CommerceExperience({
   );
 }
 
-function FloatingBubbles() {
+function AmbientEffects({ effects }: { effects: GeneratedAmbientEffect[] }) {
+  const backgroundEffects = effects.filter((effect) => effect.placement !== "foreground");
+  const foregroundEffects = effects.filter((effect) => effect.placement === "foreground");
+
   return (
-    <div className="floating-bubbles" aria-hidden="true">
-      {FLOATING_BUBBLES.map((bubble) => (
-        <span className={`floating-bubble floating-bubble-${bubble}`} key={bubble} />
-      ))}
+    <>
+      <style>{ambientEffectStyles(effects)}</style>
+      {backgroundEffects.length ? <AmbientEffectLayer effects={backgroundEffects} placement="background" /> : null}
+      {foregroundEffects.length ? <AmbientEffectLayer effects={foregroundEffects} placement="foreground" /> : null}
+    </>
+  );
+}
+
+function AmbientEffectLayer({
+  effects,
+  placement,
+}: {
+  effects: GeneratedAmbientEffect[];
+  placement: "background" | "foreground";
+}) {
+  return (
+    <div className={`ambient-effects ambient-effects-${placement}`} aria-hidden="true">
+      {effects.flatMap((effect) =>
+        effect.elements.map((element, elementIndex) => (
+          <span
+            className={`ambient-effect-element ambient-effect-${effect.id}-${element.id}`}
+            key={`${effect.id}-${element.id}-${elementIndex}`}
+            style={ambientElementStyles(effect, element)}
+          />
+        )),
+      )}
     </div>
   );
 }
@@ -353,39 +388,201 @@ function toneStyles(tone: GeneratedManifest) {
   } as CSSProperties;
 }
 
-function hasEffect(tone: GeneratedManifest, effect: string) {
-  const effectNeedle = effect.toLowerCase();
-  const explicitEffects = tone.effects || [];
-
-  if (explicitEffects.some((item) => item.toLowerCase().includes(effectNeedle))) {
-    return true;
-  }
-
-  const success = tone.success;
-  const text = [
-    tone.title,
-    tone.eyebrow,
-    tone.hero,
-    tone.subcopy,
-    tone.badge,
-    tone.checkoutLanguage,
-    success?.eyebrow,
-    success?.title,
-    success?.body,
-    success?.affiliateAttribution,
-    success?.continueLabel,
-  ]
-    .filter(Boolean)
-    .join(" ")
-    .toLowerCase();
-
-  return text.includes(effectNeedle);
-}
-
 function formatSuccessText(template: string, order: CheckoutResult) {
   return template
     .replaceAll("{orderId}", order.id.slice(0, 10))
     .replaceAll("{kind}", order.kind.toLowerCase())
     .replaceAll("{affiliateSlug}", order.affiliateSlug || "")
     .replaceAll("{commission}", formatMoney(order.commissionInCents));
+}
+
+function sanitizeAmbientEffects(effects: GeneratedManifest["ambientEffects"]): GeneratedAmbientEffect[] {
+  if (!Array.isArray(effects)) {
+    return [];
+  }
+
+  return effects
+    .map((effect, effectIndex) => sanitizeAmbientEffect(effect, effectIndex))
+    .filter(isPresent)
+    .slice(0, MAX_AMBIENT_EFFECTS);
+}
+
+function sanitizeAmbientEffect(effect: GeneratedAmbientEffect, effectIndex: number): GeneratedAmbientEffect | null {
+  if (!effect || typeof effect !== "object") {
+    return null;
+  }
+
+  const id = safeToken(effect.id) || `effect-${effectIndex + 1}`;
+  const elements = Array.isArray(effect.elements)
+    ? effect.elements.map((element, index) => sanitizeAmbientElement(element, index)).filter(isPresent).slice(0, MAX_AMBIENT_ELEMENTS)
+    : [];
+  const keyframes = Array.isArray(effect.keyframes)
+    ? effect.keyframes.map(sanitizeAmbientKeyframe).filter(isPresent).slice(0, MAX_AMBIENT_KEYFRAMES)
+    : [];
+
+  if (!elements.length || keyframes.length < 2) {
+    return null;
+  }
+
+  return {
+    id,
+    label: typeof effect.label === "string" ? effect.label.slice(0, 80) : undefined,
+    placement: effect.placement === "foreground" ? "foreground" : "background",
+    elements,
+    keyframes: keyframes.sort((left, right) => left.offset - right.offset),
+  };
+}
+
+function sanitizeAmbientElement(element: GeneratedAmbientElement, index: number): GeneratedAmbientElement | null {
+  if (!element || typeof element !== "object") {
+    return null;
+  }
+
+  return {
+    id: safeToken(element.id) || `element-${index + 1}`,
+    style: sanitizeAmbientStyle(element.style),
+    animation: sanitizeAmbientAnimation(element.animation),
+  };
+}
+
+function sanitizeAmbientAnimation(animation: GeneratedAmbientElement["animation"]): GeneratedAmbientElement["animation"] {
+  if (!animation || typeof animation !== "object") {
+    return undefined;
+  }
+
+  const durationSeconds = clampNumber(animation.durationSeconds, 2, 60, 18);
+  const delaySeconds = clampNumber(animation.delaySeconds || 0, -60, 30, 0);
+  const iterationCount = animation.iterationCount === "infinite"
+    ? "infinite"
+    : typeof animation.iterationCount === "number"
+      ? clampNumber(animation.iterationCount, 1, 24, 1)
+      : "infinite";
+
+  return {
+    durationSeconds,
+    delaySeconds,
+    timingFunction: safeTimingFunction(animation.timingFunction) || "linear",
+    iterationCount,
+    direction: safeAnimationDirection(animation.direction) || "normal",
+  };
+}
+
+function sanitizeAmbientKeyframe(keyframe: GeneratedAmbientKeyframe): GeneratedAmbientKeyframe | null {
+  if (!keyframe || typeof keyframe !== "object") {
+    return null;
+  }
+
+  return {
+    offset: clampNumber(keyframe.offset, 0, 100, 0),
+    transform: safeCssValue(keyframe.transform, 120),
+    opacity: keyframe.opacity === undefined ? undefined : clampNumber(keyframe.opacity, 0, 1, 1),
+    filter: safeCssValue(keyframe.filter, 120),
+  };
+}
+
+function sanitizeAmbientStyle(style: GeneratedAmbientStyle = {}): GeneratedAmbientStyle {
+  if (!style || typeof style !== "object") {
+    return {};
+  }
+
+  return {
+    top: safeCssValue(style.top),
+    right: safeCssValue(style.right),
+    bottom: safeCssValue(style.bottom),
+    left: safeCssValue(style.left),
+    width: safeCssValue(style.width),
+    height: safeCssValue(style.height),
+    borderRadius: safeCssValue(style.borderRadius),
+    background: safeCssValue(style.background, 220),
+    border: safeCssValue(style.border, 180),
+    boxShadow: safeCssValue(style.boxShadow, 260),
+    opacity: style.opacity === undefined ? undefined : clampNumber(style.opacity, 0, 1, 1),
+    mixBlendMode: safeBlendMode(style.mixBlendMode),
+    filter: safeCssValue(style.filter, 140),
+    transform: safeCssValue(style.transform, 140),
+  };
+}
+
+function ambientElementStyles(effect: GeneratedAmbientEffect, element: GeneratedAmbientElement) {
+  const animation = element.animation;
+  const style = {
+    ...element.style,
+    zIndex: effect.placement === "foreground" ? 3 : 0,
+  } as CSSProperties;
+
+  if (animation) {
+    style.animationName = ambientAnimationName(effect.id);
+    style.animationDuration = `${animation.durationSeconds}s`;
+    style.animationDelay = `${animation.delaySeconds || 0}s`;
+    style.animationFillMode = "both";
+    style.animationTimingFunction = animation.timingFunction || "linear";
+    style.animationIterationCount = String(animation.iterationCount || "infinite");
+    style.animationDirection = animation.direction || "normal";
+  }
+
+  return style;
+}
+
+function ambientEffectStyles(effects: GeneratedAmbientEffect[]) {
+  return effects.map((effect) => {
+    const frames = effect.keyframes.map((frame) => {
+      const declarations = [
+        frame.transform ? `transform: ${frame.transform};` : "",
+        frame.opacity !== undefined ? `opacity: ${frame.opacity};` : "",
+        frame.filter ? `filter: ${frame.filter};` : "",
+      ].filter(Boolean).join(" ");
+
+      return `${frame.offset}% { ${declarations} }`;
+    }).join("\n");
+
+    return `@keyframes ${ambientAnimationName(effect.id)} { ${frames} }`;
+  }).join("\n");
+}
+
+function ambientAnimationName(effectId: string) {
+  return `ambient-${effectId}`;
+}
+
+function safeToken(value: unknown) {
+  return typeof value === "string" ? value.toLowerCase().replace(/[^a-z0-9-]+/g, "-").replace(/^-|-$/g, "").slice(0, 48) : "";
+}
+
+function safeCssValue(value: unknown, maxLength = 96) {
+  if (typeof value !== "string") {
+    return undefined;
+  }
+
+  const trimmed = value.trim();
+
+  if (!trimmed || trimmed.length > maxLength || /[<>{};]/.test(trimmed) || /url\s*\(/i.test(trimmed)) {
+    return undefined;
+  }
+
+  return trimmed;
+}
+
+function safeBlendMode(value: unknown) {
+  const allowed = ["normal", "multiply", "screen", "overlay", "soft-light", "lighten", "darken", "color-dodge"];
+  return typeof value === "string" && allowed.includes(value) ? value : undefined;
+}
+
+function safeTimingFunction(value: unknown) {
+  if (typeof value !== "string") {
+    return undefined;
+  }
+
+  return /^(linear|ease|ease-in|ease-out|ease-in-out|cubic-bezier\([\d.,\s-]+\))$/.test(value) ? value : undefined;
+}
+
+function safeAnimationDirection(value: unknown): GeneratedAmbientAnimation["direction"] {
+  const allowed = ["normal", "reverse", "alternate", "alternate-reverse"] as const;
+  return typeof value === "string" && (allowed as readonly string[]).includes(value) ? value as GeneratedAmbientAnimation["direction"] : undefined;
+}
+
+function clampNumber(value: unknown, min: number, max: number, fallback: number) {
+  return typeof value === "number" && Number.isFinite(value) ? Math.min(max, Math.max(min, value)) : fallback;
+}
+
+function isPresent<T>(value: T | null | undefined): value is T {
+  return Boolean(value);
 }

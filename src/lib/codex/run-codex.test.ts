@@ -46,4 +46,17 @@ describe("Codex progress parsing", () => {
     expect(prompt).toContain("Append one JSON object per line");
     expect(prompt).toContain("which generated file is being inspected, edited, or verified");
   });
+
+  it("instructs Codex to use generic manifest-driven ambient effects", () => {
+    const prompt = buildCodexPrompt({
+      slug: "demo",
+      prompt: "Add a breeze animation behind the bottles.",
+      mode: "design-revision",
+    });
+
+    expect(prompt).toContain('"ambientEffects"');
+    expect(prompt).toContain("Do not rely on hard-coded platform effect names");
+    expect(prompt).toContain("breeze, bubbles, fog, sparks");
+    expect(prompt).not.toContain("floating-bubbles");
+  });
 });

@@ -154,7 +154,42 @@ The runtime reads manifest.json for generated brand direction. Include a "succes
 - affiliateAttribution
 - continueLabel
 Use {orderId}, {kind}, {affiliateSlug}, and {commission} placeholders where useful. The checkout success screen must feel like the generated affiliate storefront, not the platform default.
-If the affiliate asks for visible environmental effects such as bubbles, fog, sparks, rain, smoke, or light trails, include an "effects" array in manifest.json with stable lower-case labels such as "floating-bubbles".
+If the affiliate asks for visible environmental effects such as breeze, bubbles, fog, sparks, rain, smoke, drifting petals, or light trails, define them in manifest.json with "ambientEffects". Do not rely on hard-coded platform effect names. The platform renders ambientEffects as safe, manifest-driven animated layers.
+Use this schema:
+"ambientEffects": [
+  {
+    "id": "short-effect-id",
+    "label": "Human-readable effect name",
+    "placement": "background",
+    "elements": [
+      {
+        "id": "stream-1",
+        "style": {
+          "top": "18%",
+          "left": "-20%",
+          "width": "44vw",
+          "height": "3px",
+          "borderRadius": "999px",
+          "background": "linear-gradient(90deg, transparent, color-mix(in oklch, var(--tone-accent) 42%, transparent), transparent)",
+          "opacity": 0.58,
+          "mixBlendMode": "screen"
+        },
+        "animation": {
+          "durationSeconds": 18,
+          "delaySeconds": -7,
+          "timingFunction": "linear",
+          "iterationCount": "infinite"
+        }
+      }
+    ],
+    "keyframes": [
+      { "offset": 0, "transform": "translate3d(-12vw, 0, 0)", "opacity": 0 },
+      { "offset": 18, "opacity": 0.58 },
+      { "offset": 100, "transform": "translate3d(120vw, -2vh, 0)", "opacity": 0 }
+    ]
+  }
+]
+Keep ambient effect CSS values compact and safe: no urls, no HTML, no semicolons. Use CSS variables from the platform palette such as var(--tone-bg), var(--tone-ink), var(--tone-panel), var(--tone-accent), and var(--tone-rose). Prefer 3-12 lightweight elements per effect.
 
 Do not modify package.json.
 Do not install dependencies.
@@ -266,7 +301,7 @@ You may use browser, network, and local preview access to diagnose the validatio
 Preserve the generated storefront contract from src/lib/storefront-contract.ts.
 Remember that the visible preview renders through the platform commerce shell and consumes manifest.json for generated brand direction. Generated component files are artifacts and tests, so repair manifest-driven output and generated contract files only.
 Preserve or repair the manifest.json success object so the checkout success screen stays aligned with the generated storefront's aesthetic.
-Preserve or repair any manifest.json "effects" array that represents requested visible environmental effects.
+Preserve or repair manifest.json "ambientEffects" entries that represent requested visible environmental effects. If an effect only exists as generated component CSS, translate it into ambientEffects so the platform runtime can display it.
 Ensure these exact data-testid attributes are present and wired to the provided callbacks:
 storefront-root, product-card, add-to-cart-button, cart-button, cart-drawer, checkout-button, checkout-email, checkout-address, pay-button, success-message.
 

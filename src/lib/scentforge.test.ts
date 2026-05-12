@@ -88,11 +88,37 @@ describe("ScentForge business rules", () => {
     expect(prompt).not.toContain("Do not call external network APIs.");
   });
 
-  it("renders manifest-driven floating bubbles for generated storefront effects", () => {
+  it("renders manifest-driven ambient animations for generated storefront effects", () => {
     const manifest = {
       ...defaultManifest("demo"),
-      subcopy: "A neon perfume bar with glowing floating bubbles.",
-      effects: ["floating-bubbles"],
+      subcopy: "A perfume bar with a visible alpine breeze moving behind every bottle.",
+      ambientEffects: [
+        {
+          id: "alpine-breeze",
+          label: "Alpine breeze",
+          placement: "background" as const,
+          elements: [
+            {
+              id: "stream-1",
+              style: {
+                top: "18%",
+                left: "-20%",
+                width: "44vw",
+                height: "3px",
+                borderRadius: "999px",
+                background: "linear-gradient(90deg, transparent, color-mix(in oklch, var(--tone-accent) 42%, transparent), transparent)",
+                opacity: 0.58,
+              },
+              animation: { durationSeconds: 18, delaySeconds: -7, timingFunction: "linear" },
+            },
+          ],
+          keyframes: [
+            { offset: 0, transform: "translate3d(-12vw, 0, 0)", opacity: 0 },
+            { offset: 18, opacity: 0.58 },
+            { offset: 100, transform: "translate3d(120vw, -2vh, 0)", opacity: 0 },
+          ],
+        },
+      ],
     };
 
     const html = renderToStaticMarkup(
@@ -104,8 +130,9 @@ describe("ScentForge business rules", () => {
       }),
     );
 
-    expect(html).toContain("effect-bubbles");
-    expect(html).toContain("floating-bubbles");
+    expect(html).toContain("has-ambient-effects");
+    expect(html).toContain("ambient-effects");
+    expect(html).toContain("@keyframes ambient-alpine-breeze");
   });
 
   it("calculates 10% commission on a 490000-cent order", () => {
