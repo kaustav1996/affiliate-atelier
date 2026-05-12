@@ -63,6 +63,11 @@ export default async function DashboardPage() {
         </article>
       </section>
 
+      <section className="dashboard-proof-strip" aria-label="Metric integrity">
+        <span>LIVE orders are the dashboard source of truth.</span>
+        <strong>Atelier validation orders remain visible to tests, but never enter sales, commission, order count, trend, or recent order metrics.</strong>
+      </section>
+
       <section className="dashboard-split">
         <article className="dashboard-panel">
           <div className="panel-heading-row">
@@ -95,11 +100,7 @@ export default async function DashboardPage() {
           </div>
         </article>
       </section>
-
-      <section className="exclusion-note">
-        Validation orders from Atelier tests are excluded from live earnings, total sales, order count, trend charts,
-        and recent live orders.
-      </section>
+      <section className="exclusion-note">Clean demo state: dashboard values should return to zero after reset.</section>
     </main>
   );
 }
