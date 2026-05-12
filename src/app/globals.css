@@ -1152,9 +1152,13 @@ textarea:focus-visible {
   line-height: 1.4;
 }
 
-.generation-events span {
+.generation-event-body {
   display: grid;
   gap: 4px;
+  min-width: 0;
+}
+
+.generation-event-message {
   min-width: 0;
 }
 

@@ -364,9 +364,9 @@ export function AtelierClient({ slug, initialPrompt, initialFiles, validationRun
                 {generationJob.progressEvents.map((event) => (
                   <li key={`${event.at}-${event.message}`}>
                     <time>{formatEventTime(event.at)}</time>
-                    <span>
+                    <span className="generation-event-body">
                       <strong className={`generation-event-phase phase-${event.phase}`}>{formatProgressPhase(event.phase)}</strong>
-                      {event.message}
+                      <span className="generation-event-message">{event.message}</span>
                       {event.detail ? <small>{event.detail}</small> : null}
                     </span>
                   </li>
