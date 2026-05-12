@@ -12,12 +12,15 @@ Use this for requests like "run the app", "start local", "reset demo", "can I te
 Run:
 
 ```bash
+if [ ! -d node_modules ]; then npm ci; fi
+npx playwright install chromium
 docker compose up -d postgres
 npm run db:migrate
 npm run demo:reset
 ```
 
 `demo:reset` clears generated storefront artifacts, resets Postgres, reseeds the demo affiliate, and leaves dashboard metrics at zero.
+`npx playwright install chromium` is safe to rerun and prevents generated storefront validation from failing before launch because the local Chromium/headless-shell binary is missing.
 
 ## Start The App
 
@@ -44,6 +47,7 @@ env -u CODEX_MOCK npm run dev -- -p 3002
 Run focused checks before handing control back:
 
 ```bash
+npx playwright install chromium
 npm run typecheck
 npm run lint
 npm run test
