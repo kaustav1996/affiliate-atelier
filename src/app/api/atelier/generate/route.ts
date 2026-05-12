@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireAffiliate } from "@/lib/auth/current";
 import { generateAffiliateStorefront } from "@/lib/codex/run-codex";
-import { clearDraftDirectory } from "@/lib/generated-storefront";
 import { prisma } from "@/lib/prisma";
 
 export async function POST(request: Request) {
@@ -19,7 +18,6 @@ export async function POST(request: Request) {
       data: { atelierPrompt: prompt },
     });
 
-    await clearDraftDirectory(affiliate.slug);
     const result = await generateAffiliateStorefront({ slug: affiliate.slug, prompt });
 
     await prisma.affiliate.update({

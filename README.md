@@ -1,6 +1,6 @@
 # ScentForge Atelier
 
-ScentForge Atelier is a complete local demo for a fictional perfume affiliate marketplace. Customers can buy perfume through a mock checkout, affiliates can log in and see LIVE sales/commission metrics, and the Atelier can generate a custom storefront through `codex exec`, validate it with Playwright, and publish only after tests pass.
+ScentForge Atelier is a complete local demo for a fictional perfume affiliate marketplace. Customers can buy perfume through a test checkout, affiliates can log in and see LIVE sales/commission metrics, and the Atelier can generate a custom storefront through `codex exec`, validate it with Playwright, and publish only after tests pass.
 
 ## Stack
 
@@ -69,13 +69,13 @@ The prompt instructs Codex to create or edit files only inside:
 generated/affiliates/[slug]/draft
 ```
 
-Generated packages include `Storefront.tsx`, component files, `storefront.css`, `manifest.json`, and `generated.test.tsx`. If the local `codex` command is missing, the Atelier shows a clear error. For automated tests, set:
+Generated packages include `Storefront.tsx`, component files, `storefront.css`, `manifest.json`, and `generated.test.tsx`. If the local `codex` command is missing, the Atelier shows a clear error.
 
-```bash
-CODEX_MOCK=1
-```
+Generation always invokes the real Codex CLI and writes files under `generated/affiliates/[slug]/draft`. `CODEX_MOCK` is not supported.
 
-Mock mode writes a deterministic multi-file storefront package without invoking Codex. Without `CODEX_MOCK=1`, the app invokes the real Codex CLI and writes the generated files under `generated/affiliates/[slug]/draft`.
+Affiliates can apply additional prompt changes to an existing draft. Codex inspects and revises the current draft instead of clearing it first. The generated `manifest.json` also owns success-screen copy, so payment confirmation follows the affiliate storefront aesthetic.
+
+The Atelier also has a reset action that removes draft/published generated artifacts and makes the default platform storefront live again for that affiliate.
 
 If validation fails, `/api/atelier/run-tests` launches a second Codex CLI call with the Playwright failure logs and asks Codex to repair only the draft generated package. The route then reruns validation once. If the repair still fails, publish remains disabled and the combined failure/repair logs are shown in the Atelier console.
 
@@ -147,7 +147,7 @@ Generated affiliate storefront files live under `generated/affiliates/**` and ar
 ## Five-Minute Demo Script
 
 1. Open `/` and show the fragrance storefront.
-2. Add a perfume to cart, open checkout, and complete mock payment.
+2. Add a perfume to cart, open checkout, and complete the test payment.
 3. Log in as the demo affiliate.
 4. Show `/dashboard`: referral link, LIVE sales, LIVE commission, trend, and recent orders.
 5. Open `/a/demo`, purchase a product, and return to dashboard to show LIVE commission changed.

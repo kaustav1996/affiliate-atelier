@@ -59,8 +59,10 @@ BASE_URL=http://localhost:3002 npm run test:e2e
 For local demo work:
 
 ```bash
-CODEX_MOCK=1 npm run dev -- -p 3002
+env -u CODEX_MOCK npm run dev -- -p 3002
 ```
+
+Do not use `CODEX_MOCK`. Atelier generation and validation repair must invoke the real Codex CLI.
 
 ## Validation Integrity
 

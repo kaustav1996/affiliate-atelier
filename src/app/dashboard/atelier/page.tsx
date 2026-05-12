@@ -33,8 +33,8 @@ export default async function AtelierPage() {
           <p className="eyebrow">Atelier</p>
           <h1>Generate, validate, publish.</h1>
           <p>
-            Codex writes only inside generated/affiliates/{affiliate.slug}/draft. The published storefront link opens
-            what customers see at /a/{affiliate.slug}; before publish it falls back to the default affiliate store.
+            Codex CLI writes only inside generated/affiliates/{affiliate.slug}/draft. Add new prompts to revise the
+            current draft, validate before publishing, or reset to the default storefront at any time.
           </p>
         </div>
         <nav>

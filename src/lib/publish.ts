@@ -1,16 +1,25 @@
 import { ValidationStatus } from "@/generated/prisma/enums";
-import { copyDraftToPublished } from "@/lib/generated-storefront";
+import { clearAffiliateGeneratedStorefront, copyDraftToPublished } from "@/lib/generated-storefront";
 import { prisma } from "@/lib/prisma";
 
 export async function getPublishGate(affiliateId: string) {
-  const latestRun = await prisma.validationRun.findFirst({
-    where: { affiliateId },
-    orderBy: { createdAt: "desc" },
-  });
+  const [affiliate, latestRun] = await Promise.all([
+    prisma.affiliate.findUnique({
+      where: { id: affiliateId },
+      select: { draftGeneratedAt: true },
+    }),
+    prisma.validationRun.findFirst({
+      where: { affiliateId },
+      orderBy: { createdAt: "desc" },
+    }),
+  ]);
+  const validationCompletedAt = latestRun?.completedAt || latestRun?.createdAt || null;
+  const validationCoversDraft =
+    !affiliate?.draftGeneratedAt || Boolean(validationCompletedAt && validationCompletedAt >= affiliate.draftGeneratedAt);
 
   return {
     latestRun,
-    canPublish: latestRun?.status === ValidationStatus.PASSED,
+    canPublish: latestRun?.status === ValidationStatus.PASSED && validationCoversDraft,
   };
 }
 
@@ -28,6 +37,19 @@ export async function publishAffiliateDraft(affiliateId: string, slug: string) {
     data: {
       publishedAt: new Date(),
       lastValidationRunId: latestRun.id,
+    },
+  });
+}
+
+export async function publishDefaultStorefront(affiliateId: string, slug: string) {
+  await clearAffiliateGeneratedStorefront(slug);
+
+  return prisma.affiliate.update({
+    where: { id: affiliateId },
+    data: {
+      draftGeneratedAt: null,
+      publishedAt: null,
+      lastValidationRunId: null,
     },
   });
 }
