@@ -365,9 +365,13 @@ export function AtelierClient({ slug, initialPrompt, initialFiles, validationRun
                   <li key={`${event.at}-${event.message}`}>
                     <time>{formatEventTime(event.at)}</time>
                     <span className="generation-event-body">
-                      <strong className={`generation-event-phase phase-${event.phase}`}>{formatProgressPhase(event.phase)}</strong>
-                      <span className="generation-event-message">{event.message}</span>
-                      {event.detail ? <small>{event.detail}</small> : null}
+                      <span className="generation-event-main">
+                        <strong className={`generation-event-phase phase-${event.phase}`}>
+                          {formatProgressPhase(event.phase)}:
+                        </strong>{" "}
+                        <span className="generation-event-message">{event.message}</span>
+                      </span>
+                      {event.detail ? <small className="generation-event-detail">{event.detail}</small> : null}
                     </span>
                   </li>
                 ))}
